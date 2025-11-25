@@ -17,6 +17,48 @@
       font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
     }
 
+    /* NEUES UI FÜR AR-MODUS */
+    #ar-ui {
+        position: fixed;
+        top: 15px; /* Abstand oben */
+        right: 15px; /* Abstand rechts */
+        z-index: 1000;
+        display: none; /* Am Anfang versteckt */
+        gap: 10px;
+        flex-direction: row; /* Buttons nebeneinander */
+        /* Fügt Padding hinzu, um den Viewport-Fit zu respektieren, falls nötig */
+        padding-right: env(safe-area-inset-right);
+        padding-top: env(safe-area-inset-top);
+    }
+
+    .ar-ui-button {
+        appearance: none;
+        border: none;
+        background: rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(5px);
+        color: #fff;
+        font-size: 20px;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        cursor: pointer;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        transition: background 0.2s;
+    }
+
+    .ar-ui-button:hover {
+        background: rgba(0, 0, 0, 0.6);
+    }
+
+    /* Wichtig: Blendet die UI aus, wenn das Poster angezeigt wird */
+    #poster[style*="display: flex;"] + model-viewer + #ar-ui {
+        display: none !important;
+    }
+
     /* Vollbild-Poster */
     #poster{
       position:fixed;
@@ -98,48 +140,6 @@
       max-width:min(92vw,680px);
       white-space:pre-wrap;
     }
-
-    /* NEUES UI FÜR AR-MODUS */
-    #ar-ui {
-        position: fixed;
-        top: 15px; /* Abstand oben */
-        right: 15px; /* Abstand rechts */
-        z-index: 1000;
-        display: none; /* Am Anfang versteckt */
-        gap: 10px;
-        flex-direction: row; /* Buttons nebeneinander */
-        /* Fügt Padding hinzu, um den Viewport-Fit zu respektieren */
-        padding-right: env(safe-area-inset-right);
-        padding-top: env(safe-area-inset-top);
-    }
-
-    .ar-ui-button {
-        appearance: none;
-        border: none;
-        background: rgba(0, 0, 0, 0.4);
-        backdrop-filter: blur(5px);
-        color: #fff;
-        font-size: 20px;
-        width: 44px;
-        height: 44px;
-        border-radius: 50%;
-        cursor: pointer;
-        line-height: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-        transition: background 0.2s;
-    }
-
-    .ar-ui-button:hover {
-        background: rgba(0, 0, 0, 0.6);
-    }
-
-    /* Wichtig: Blendet die UI aus, wenn das Poster angezeigt wird */
-    #poster[style*="display: flex;"] + model-viewer + #ar-ui {
-        display: none !important;
-    }
   </style>
 </head>
 <body>
@@ -153,7 +153,6 @@
         Tippe auf „AR starten“, richte dein Gerät auf eine ebene Fläche und platziere dann das 3D-Modell.
       </p>
       <button id="startAr">AR starten</button>
-      
     </div>
   </div>
 
@@ -172,14 +171,14 @@
     poster="">
   </model-viewer>
 
-        <div id="ar-ui">
-        <button id="closeArBtn" class="ar-ui-button" title="AR beenden">
-            ❌
-        </button>
-        <button id="captureButton" class="ar-ui-button" title="Foto aufnehmen">
-            📸
-        </button>
-    </div>
+  <div id="ar-ui">
+    <button id="closeArBtn" class="ar-ui-button" title="AR beenden">
+        ❌
+    </button>
+    <button id="captureButton" class="ar-ui-button" title="Foto aufnehmen">
+        📸
+    </button>
+</div>
 
   <script type="module">
   (() => {
@@ -255,12 +254,9 @@
     const posterTitle = document.getElementById('posterTitle');
     const posterDesc  = document.getElementById('posterDesc');
     const posterImage = document.getElementById('posterImage');
-
-    // NEUE UI Refs
-    const arUi = document.getElementById('ar-ui');
-    const closeArBtn = document.getElementById('closeArBtn');
-    const captureButton = document.getElementById('captureButton');
-
+    const arUi        = document.getElementById('ar-ui'); // NEU: AR UI Ref
+    const closeArBtn  = document.getElementById('closeArBtn'); // NEU: Close Btn Ref
+    const captureButton = document.getElementById('captureButton'); // NEU: Capture Btn Ref
 
     function showError(msg){
       errBox.textContent = msg;
@@ -289,7 +285,7 @@
       }
     };
 
-    // --------- Szene + JSON laden ---------
+    // --------- Szene + JSON laden (MIT URL-FIX) ---------
     (async () => {
       try {
         if (SCENE_JSON && !isDataOrBlob(SCENE_JSON)) {
@@ -320,22 +316,38 @@
             if (typeof wl.poster === 'string' && wl.poster) cfg.welcome.posterFile = wl.poster;
           }
 
-          // Model-URL (relativ aus JSON) als Fallback
-          if (j.model && j.model.url && !overrideGlb) {
-            // Falls es "scene.glb" ist, nehmen wir SCENE_GLB; sonst die absolute URL daraus machen.
-            if (!SCENE_GLB) {
-              if (sceneId && !isHttp(j.model.url)) {
-                cfg.glbUrl = `${workerBase}/scenes/${encodeURIComponent(sceneId)}/${j.model.url}`;
-              } else {
-                cfg.glbUrl = j.model.url;
-              }
+            // === START: KORRIGIERTE URL-BESTIMMUNGS-LOGIK ===
+            // Model-URL (relativ aus JSON) VOR SCENE_GLB als Fallback
+            if (j.model && j.model.url && !overrideGlb) {
+                if (sceneId && !isHttp(j.model.url)) {
+                    // Wenn relative URL im JSON und wir eine sceneId haben
+                    cfg.glbUrl = `${workerBase}/scenes/${encodeURIComponent(sceneId)}/${j.model.url}`;
+                } else {
+                    // Absolute URL oder keine sceneId
+                    cfg.glbUrl = j.model.url;
+                }
+            } else if (!SCENE_GLB) {
+                // Fallback auf die geratene scene.glb, falls nichts anderes gesetzt
+                if (sceneId) {
+                     cfg.glbUrl = `${workerBase}/scenes/${encodeURIComponent(sceneId)}/scene.glb`;
+                }
             }
-          }
+            // HIER: SCENE_GLB hat Vorrang, falls gesetzt (via URL-Param 'glb')
+            if (SCENE_GLB) {
+                cfg.glbUrl = SCENE_GLB;
+            }
 
-          // Audio/USDC später, fürs Erste ignorieren oder nur usdz übernehmen
-          if (j.model && j.model.usdzUrl && !overrideUsdz) {
-            cfg.usdzUrl = j.model.usdzUrl;
-          }
+            // USDZ-URL setzen (für iOS Quick Look)
+            if (overrideUsdz) {
+                cfg.usdzUrl = overrideUsdz;
+            } else if (j.model && j.model.usdzUrl) {
+                // USDZ aus scene.json (wichtig für iOS!)
+                cfg.usdzUrl = j.model.usdzUrl;
+            } else if (sceneId) {
+                // Fallback: Geratene scene.usdz
+                cfg.usdzUrl = `${workerBase}/scenes/${encodeURIComponent(sceneId)}/scene.usdz`;
+            }
+            // === ENDE: KORRIGIERTE URL-BESTIMMUNGS-LOGIK ===
         }
 
         // Texte auf Poster anwenden
@@ -359,14 +371,13 @@
           posterImage.style.display = 'none';
         }
 
-        // finale GLB-URL
-        const finalGlb = SCENE_GLB || cfg.glbUrl || "https://modelviewer.dev/shared-assets/models/Astronaut.glb";
+        // finale GLB-URL setzen
+        const finalGlb = cfg.glbUrl || "https://modelviewer.dev/shared-assets/models/Astronaut.glb";
         mv.src = bust(finalGlb);
 
-        if (overrideUsdz) {
-          mv.setAttribute('ios-src', overrideUsdz);
-        } else if (cfg.usdzUrl) {
-          mv.setAttribute('ios-src', cfg.usdzUrl);
+        // finale USDZ-URL setzen
+        if (cfg.usdzUrl) {
+          mv.setAttribute('ios-src', bust(cfg.usdzUrl));
         } else {
           mv.removeAttribute('ios-src');
         }
@@ -460,91 +471,96 @@
 
         mv.addEventListener('timeupdate', onTimeUpdate);
       }
-    }); // <-- Ende des Load Listeners
-
-
-    // ------------------------------------------------------------------
-    // --------- NEUE UI LOGIK (CLOSE & CAPTURE) ---------------------
-    // ------------------------------------------------------------------
+    });
     
-    // Funktion zum Ausblenden der UI und Beenden der AR-Sitzung
-    closeArBtn?.addEventListener('click', () => {
-        // Deaktiviert die AR-Sitzung, falls aktiv
-        if (mv.isArActive) {
-            mv.stopAr();
-        }
-        // Blendet die AR-UI aus und zeigt das Poster wieder an
-        arUi.style.display = 'none';
-        poster.style.display = 'flex';
-    });
-    
-    // Foto-Funktion
-    captureButton?.addEventListener('click', () => {
-        const canvas = document.querySelector('canvas'); 
-        
-        if (!canvas) {
-            showError("Canvas für die Aufnahme nicht gefunden.");
-            return;
-        }
-
-        canvas.toBlob((blob) => {
-            if (!blob) return;
-
-            // Link-Element erstellen, um den Download zu triggern
-            const link = document.createElement('a');
-            link.download = 'area-ar-scene-' + Date.now().toString(36) + '.png';
-            link.href = URL.createObjectURL(blob);
-            
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(link.href);
-            
-        }, 'image/png');
-    });
-
-    // Event, das feuert, wenn AR erfolgreich gestartet wird
-    mv.addEventListener('ar-status', (event) => {
-        if (event.detail.status === 'session-started') {
-            arUi.style.display = 'flex'; // UI einblenden
-        } else if (event.detail.status === 'not-presenting') {
-            arUi.style.display = 'none'; // UI ausblenden, wenn AR beendet wird
-        }
-    });
-
-
-    // --------- AR-Start über Poster-Button ---------
-    startBtn.addEventListener('click', async (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-
-      if (!mv.hasAttribute('ar')) {
-        showError('AR ist für diese Szene nicht aktiviert.');
-        return;
-      }
-
-      startBtn.disabled = true;
-
-      try {
-        poster.style.display = 'none';
-
-        if (typeof mv.activateAR === 'function') {
-          await mv.activateAR();
-        } else if (typeof mv.enterAR === 'function') {
-          await mv.enterAR();
-        } else {
-          throw new Error('AR wird von diesem Browser nicht unterstützt.');
+    // --------- NEUE UI LOGIK (CLOSE & CAPTURE) ---------
+    
+    // Funktion zum Ausblenden der UI und Beenden der AR-Sitzung
+    closeArBtn?.addEventListener('click', () => {
+        // Deaktiviert die AR-Sitzung, falls aktiv
+        if (mv.isArActive) {
+            mv.stopAr();
         }
-      } catch (e) {
-        showError('AR konnte nicht gestartet werden: ' + e.message);
-        console.error('[area-viewer] AR start error', e);
+        // Blendet die AR-UI aus und zeigt das Poster wieder an
+        arUi.style.display = 'none';
         poster.style.display = 'flex';
-      } finally {
-        startBtn.disabled = false;
-      }
+    });
+    
+    // Foto-Funktion
+    captureButton?.addEventListener('click', () => {
+        const canvas = document.querySelector('canvas'); 
+        
+        if (!canvas) {
+            showError("Canvas für die Aufnahme nicht gefunden.");
+            return;
+        }
+
+        canvas.toBlob((blob) => {
+            if (!blob) return;
+
+            // Link-Element erstellen, um den Download zu triggern
+            const link = document.createElement('a');
+            link.download = 'area-ar-scene-' + Date.now().toString(36) + '.png';
+            link.href = URL.createObjectURL(blob);
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            
+        }, 'image/png');
     });
 
-  })();
-  </script>
+    // Event, das feuert, wenn AR erfolgreich gestartet wird
+    mv.addEventListener('ar-status', (event) => {
+        if (event.detail.status === 'session-started') {
+            arUi.style.display = 'flex'; // UI einblenden
+        } else if (event.detail.status === 'not-presenting') {
+             arUi.style.display = 'none'; // UI ausblenden, wenn AR beendet wird
+        }
+    });
+
+    // --------- AR-Start über Poster-Button (MIT SUPPORT CHECK FIX) ---------
+    startBtn.addEventListener('click', async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        if (!mv.hasAttribute('ar')) {
+            showError('AR ist für diese Szene nicht aktiviert (fehlendes "ar"-Attribut).');
+            return;
+        }
+        
+        // NEU: Prüfung, ob AR-Session überhaupt gestartet werden kann
+        if (typeof mv.canActivateAR === 'function' && !mv.canActivateAR()) {
+            showError('AR wird von diesem Gerät/Browser nicht unterstützt oder das Modell ist nicht verfügbar (z.B. fehlende USDZ auf iOS).');
+            return;
+        }
+
+        startBtn.disabled = true;
+
+        try {
+            poster.style.display = 'none';
+
+            if (typeof mv.activateAR === 'function') {
+                await mv.activateAR();
+            } else if (typeof mv.enterAR === 'function') {
+                // Fallback für ältere model-viewer Versionen
+                await mv.enterAR();
+            } else {
+                throw new Error('AR-Funktion nicht gefunden. model-viewer veraltet?');
+            }
+        } catch (e) {
+            showError('AR konnte nicht gestartet werden: ' + e.message);
+            console.error('[area-viewer] AR start error', e);
+            poster.style.display = 'flex';
+        } finally {
+            startBtn.disabled = false;
+        }
+    });
+    // --------- ENDE AR-Start Button Logik ---------
+
+})();
+</script>
+
 </body>
 </html>
