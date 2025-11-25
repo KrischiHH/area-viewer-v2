@@ -18,6 +18,50 @@
       font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
     }
 
+    /* ... bestehendes CSS ... */
+
+/* NEUES UI FÜR AR-MODUS */
+#ar-ui {
+    position: fixed;
+    top: 15px; /* Abstand oben */
+    right: 15px; /* Abstand rechts */
+    z-index: 1000;
+    display: none; /* Am Anfang versteckt */
+    gap: 10px;
+    flex-direction: row; /* Buttons nebeneinander */
+    /* Fügt Padding hinzu, um den Viewport-Fit zu respektieren, falls nötig */
+    padding-right: env(safe-area-inset-right);
+    padding-top: env(safe-area-inset-top);
+}
+
+.ar-ui-button {
+    appearance: none;
+    border: none;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(5px);
+    color: #fff;
+    font-size: 20px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    cursor: pointer;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    transition: background 0.2s;
+}
+
+.ar-ui-button:hover {
+    background: rgba(0, 0, 0, 0.6);
+}
+
+/* Wichtig: Blendet die UI aus, wenn das Poster angezeigt wird */
+#poster[style*="display: flex;"] + model-viewer + #ar-ui {
+    display: none !important;
+}
+
     /* Vollbild-Poster */
     #poster{
       position:fixed;
@@ -131,6 +175,15 @@
     field-of-view="30deg"
     poster="">
   </model-viewer>
+
+  <div id="ar-ui">
+    <button id="closeArBtn" class="ar-ui-button" title="AR beenden">
+        ❌
+    </button>
+    <button id="captureButton" class="ar-ui-button" title="Foto aufnehmen">
+        📸
+    </button>
+</div>
 
   <script type="module">
   (() => {
@@ -326,6 +379,94 @@
     mv.addEventListener('load', () => {
       const names = mv.availableAnimations || [];
       console.log('[area-viewer] availableAnimations:', names);
+
+      // ... mv.addEventListener('load', ...) ENDET HIER
+
+    // --------- NEUE UI LOGIK (CLOSE & CAPTURE) ---------
+    const arUi = document.getElementById('ar-ui');
+    const closeArBtn = document.getElementById('closeArBtn');
+    const captureButton = document.getElementById('captureButton');
+
+    // Funktion zum Ausblenden der UI und Beenden der AR-Sitzung
+    closeArBtn?.addEventListener('click', () => {
+        // Deaktiviert die AR-Sitzung, falls aktiv
+        if (mv.isArActive) {
+            mv.stopAr();
+        }
+        // Blendet die AR-UI aus und zeigt das Poster wieder an
+        arUi.style.display = 'none';
+        poster.style.display = 'flex';
+    });
+    
+    // Foto-Funktion
+    captureButton?.addEventListener('click', () => {
+        const canvas = document.querySelector('canvas'); 
+        
+        if (!canvas) {
+            showError("Canvas für die Aufnahme nicht gefunden.");
+            return;
+        }
+
+        canvas.toBlob((blob) => {
+            if (!blob) return;
+
+            // Link-Element erstellen, um den Download zu triggern
+            const link = document.createElement('a');
+            link.download = 'area-ar-scene-' + Date.now().toString(36) + '.png';
+            link.href = URL.createObjectURL(blob);
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            
+        }, 'image/png');
+    });
+
+    // Event, das feuert, wenn AR erfolgreich gestartet wird
+    mv.addEventListener('ar-status', (event) => {
+        if (event.detail.status === 'session-started') {
+            arUi.style.display = 'flex'; // UI einblenden
+        } else if (event.detail.status === 'not-presenting') {
+             arUi.style.display = 'none'; // UI ausblenden, wenn AR beendet wird
+        }
+    });
+
+    // --------- AR-Start über Poster-Button ---------
+    // HIER ÄNDERT SICH NICHTS, ABER DIE LOGIK IST JETZT KOMPLETT
+    startBtn.addEventListener('click', async (ev) => {
+        // ... (bestehender Code von startBtn bleibt gleich) ...
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        if (!mv.hasAttribute('ar')) {
+            showError('AR ist für diese Szene nicht aktiviert.');
+            return;
+        }
+
+        startBtn.disabled = true;
+
+        try {
+            poster.style.display = 'none';
+
+            if (typeof mv.activateAR === 'function') {
+                await mv.activateAR();
+            } else if (typeof mv.enterAR === 'function') {
+                await mv.enterAR();
+            } else {
+                throw new Error('AR wird von diesem Browser nicht unterstützt.');
+            }
+        } catch (e) {
+            showError('AR konnte nicht gestartet werden: ' + e.message);
+            console.error('[area-viewer] AR start error', e);
+            poster.style.display = 'flex';
+        } finally {
+            startBtn.disabled = false;
+        }
+    });
+
+})();
+</script>
 
       // Clip auswählen: cfg.animation.clipName oder fallback erster Clip
       let sel = cfg.animation.clipName;
