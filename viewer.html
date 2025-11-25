@@ -1,392 +1,472 @@
 <!doctype html>
 <html lang="de">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>ARea Viewer – Surface AR</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <title>ARea Viewer – Surface AR</title>
 
-  <!-- model-viewer -->
-  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+    <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
 
-  <style>
-    :root{color-scheme:dark light}
-    *,*::before,*::after{box-sizing:border-box}
-    html,body{
-      margin:0;
-      height:100%;
-      background:#000;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  <style>
+    :root{color-scheme:dark light}
+    *,*::before,*::after{box-sizing:border-box}
+    html,body{
+      margin:0;
+      height:100%;
+      background:#000;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    }
+
+    /* Vollbild-Poster */
+    #poster{
+      position:fixed;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:#05070c;
+      z-index:5;
+      color:#fff;
+      text-align:center;
+      padding:24px;
+    }
+    #poster-inner{
+      max-width:420px;
+      width:100%;
+      padding:24px 20px;
+      border-radius:24px;
+      background:radial-gradient(circle at top,#243b74,#05070c);
+      box-shadow:0 18px 40px rgba(0,0,0,0.6);
+      border:1px solid rgba(255,255,255,0.15);
+    }
+    #posterImage{
+      width:100%;
+      max-height:220px;
+      object-fit:cover;
+      border-radius:16px;
+      display:none; /* nur zeigen, wenn wir eine URL haben */
+      margin-bottom:16px;
+      background:#111;
+    }
+    #poster h1{
+      font-size:22px;
+      margin:0 0 8px;
+    }
+    #poster p{
+      margin:0 0 16px;
+      font-size:14px;
+      opacity:0.9;
+    }
+    #startAr{
+      appearance:none;
+      border:none;
+      border-radius:999px;
+      padding:10px 20px;
+      font-size:15px;
+      font-weight:500;
+      background:linear-gradient(135deg,#5ddcff,#3c67e3);
+      color:#fff;
+      cursor:pointer;
+      box-shadow:0 10px 25px rgba(0,0,0,0.5);
+    }
+    #startAr[disabled]{
+      opacity:0.6;
+      cursor:wait;
+    }
+
+    /* model-viewer als AR-Host (Preview wird vom Poster verdeckt) */
+    model-viewer{
+      position:fixed;
+      inset:0;
+      width:100vw;
+      height:100svh;
+      display:block;
+      background:#000;
+    }
+
+    #err{
+      position:fixed;
+      left:12px;
+      top:12px;
+      z-index:9;
+      background:#b00020;
+      color:#fff;
+      padding:8px 10px;
+      border-radius:8px;
+      display:none;
+      font:12px/1.35 monospace;
+      max-width:min(92vw,680px);
+      white-space:pre-wrap;
+    }
+
+    /* NEUES UI FÜR AR-MODUS */
+    #ar-ui {
+        position: fixed;
+        top: 15px; /* Abstand oben */
+        right: 15px; /* Abstand rechts */
+        z-index: 1000;
+        display: none; /* Am Anfang versteckt */
+        gap: 10px;
+        flex-direction: row; /* Buttons nebeneinander */
+        /* Fügt Padding hinzu, um den Viewport-Fit zu respektieren */
+        padding-right: env(safe-area-inset-right);
+        padding-top: env(safe-area-inset-top);
     }
 
-    /* ... bestehendes CSS ... */
-
-/* NEUES UI FÜR AR-MODUS */
-#ar-ui {
-    position: fixed;
-    top: 15px; /* Abstand oben */
-    right: 15px; /* Abstand rechts */
-    z-index: 1000;
-    display: none; /* Am Anfang versteckt */
-    gap: 10px;
-    flex-direction: row; /* Buttons nebeneinander */
-    /* Fügt Padding hinzu, um den Viewport-Fit zu respektieren, falls nötig */
-    padding-right: env(safe-area-inset-right);
-    padding-top: env(safe-area-inset-top);
-}
-
-.ar-ui-button {
-    appearance: none;
-    border: none;
-    background: rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(5px);
-    color: #fff;
-    font-size: 20px;
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    cursor: pointer;
-    line-height: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    transition: background 0.2s;
-}
-
-.ar-ui-button:hover {
-    background: rgba(0, 0, 0, 0.6);
-}
-
-/* Wichtig: Blendet die UI aus, wenn das Poster angezeigt wird */
-#poster[style*="display: flex;"] + model-viewer + #ar-ui {
-    display: none !important;
-}
-
-    /* Vollbild-Poster */
-    #poster{
-      position:fixed;
-      inset:0;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      background:#05070c;
-      z-index:5;
-      color:#fff;
-      text-align:center;
-      padding:24px;
-    }
-    #poster-inner{
-      max-width:420px;
-      width:100%;
-      padding:24px 20px;
-      border-radius:24px;
-      background:radial-gradient(circle at top,#243b74,#05070c);
-      box-shadow:0 18px 40px rgba(0,0,0,0.6);
-      border:1px solid rgba(255,255,255,0.15);
-    }
-    #posterImage{
-      width:100%;
-      max-height:220px;
-      object-fit:cover;
-      border-radius:16px;
-      display:none; /* nur zeigen, wenn wir eine URL haben */
-      margin-bottom:16px;
-      background:#111;
-    }
-    #poster h1{
-      font-size:22px;
-      margin:0 0 8px;
-    }
-    #poster p{
-      margin:0 0 16px;
-      font-size:14px;
-      opacity:0.9;
-    }
-    #startAr{
-      appearance:none;
-      border:none;
-      border-radius:999px;
-      padding:10px 20px;
-      font-size:15px;
-      font-weight:500;
-      background:linear-gradient(135deg,#5ddcff,#3c67e3);
-      color:#fff;
-      cursor:pointer;
-      box-shadow:0 10px 25px rgba(0,0,0,0.5);
-    }
-    #startAr[disabled]{
-      opacity:0.6;
-      cursor:wait;
+    .ar-ui-button {
+        appearance: none;
+        border: none;
+        background: rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(5px);
+        color: #fff;
+        font-size: 20px;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        cursor: pointer;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        transition: background 0.2s;
     }
 
-    /* model-viewer als AR-Host (Preview wird vom Poster verdeckt) */
-    model-viewer{
-      position:fixed;
-      inset:0;
-      width:100vw;
-      height:100svh;
-      display:block;
-      background:#000;
+    .ar-ui-button:hover {
+        background: rgba(0, 0, 0, 0.6);
     }
 
-    #err{
-      position:fixed;
-      left:12px;
-      top:12px;
-      z-index:9;
-      background:#b00020;
-      color:#fff;
-      padding:8px 10px;
-      border-radius:8px;
-      display:none;
-      font:12px/1.35 monospace;
-      max-width:min(92vw,680px);
-      white-space:pre-wrap;
+    /* Wichtig: Blendet die UI aus, wenn das Poster angezeigt wird */
+    #poster[style*="display: flex;"] + model-viewer + #ar-ui {
+        display: none !important;
     }
-  </style>
+  </style>
 </head>
 <body>
-  <div id="err"></div>
+  <div id="err"></div>
 
-  <!-- Willkommen-Poster -->
-  <div id="poster">
-    <div id="poster-inner">
-      <img id="posterImage" alt="">
-      <h1 id="posterTitle">ARea AR-Erlebnis</h1>
-      <p id="posterDesc">
-        Tippe auf „AR starten“, richte dein Gerät auf eine ebene Fläche und platziere dann das 3D-Modell.
-      </p>
-      <button id="startAr">AR starten</button>
+    <div id="poster">
+    <div id="poster-inner">
+      <img id="posterImage" alt="">
+      <h1 id="posterTitle">ARea AR-Erlebnis</h1>
+      <p id="posterDesc">
+        Tippe auf „AR starten“, richte dein Gerät auf eine ebene Fläche und platziere dann das 3D-Modell.
+      </p>
+      <button id="startAr">AR starten</button>
+      
+    </div>
+  </div>
+
+    <model-viewer id="mv"
+    src="https://modelviewer.dev/shared-assets/models/Astronaut.glb"
+    ar
+    ar-modes="webxr scene-viewer quick-look"
+    camera-controls
+    environment-image="https://modelviewer.dev/shared-assets/environments/neutral.hdr"
+    exposure="1"
+    shadow-intensity="1"
+    interaction-prompt="none"
+    camera-orbit="0deg 70deg auto"
+    camera-target="auto"
+    field-of-view="30deg"
+    poster="">
+  </model-viewer>
+
+        <div id="ar-ui">
+        <button id="closeArBtn" class="ar-ui-button" title="AR beenden">
+            ❌
+        </button>
+        <button id="captureButton" class="ar-ui-button" title="Foto aufnehmen">
+            📸
+        </button>
     </div>
-  </div>
 
-  <!-- model-viewer, nur als AR-Host (Preview wird vom Poster verdeckt) -->
-  <model-viewer id="mv"
-    src="https://modelviewer.dev/shared-assets/models/Astronaut.glb"
-    ar
-    ar-modes="webxr scene-viewer quick-look"
-    camera-controls
-    environment-image="https://modelviewer.dev/shared-assets/environments/neutral.hdr"
-    exposure="1"
-    shadow-intensity="1"
-    interaction-prompt="none"
-    camera-orbit="0deg 70deg auto"
-    camera-target="auto"
-    field-of-view="30deg"
-    poster="">
-  </model-viewer>
+  <script type="module">
+  (() => {
+    const qs = new URLSearchParams(location.search);
+    const devParam = qs.get('dev');
+    const DEV = qs.has('dev') && (devParam === null || devParam === '' || devParam === '1' || devParam === 'true');
 
-  <div id="ar-ui">
-    <button id="closeArBtn" class="ar-ui-button" title="AR beenden">
-        ❌
-    </button>
-    <button id="captureButton" class="ar-ui-button" title="Foto aufnehmen">
-        📸
-    </button>
-</div>
+    function bust(u){
+      if (!DEV || !u) return u;
+      const sep = u.includes('?') ? '&' : '?';
+      return u + sep + 'v=' + Date.now();
+    }
 
-  <script type="module">
-  (() => {
-    const qs = new URLSearchParams(location.search);
-    const devParam = qs.get('dev');
-    const DEV = qs.has('dev') && (devParam === null || devParam === '' || devParam === '1' || devParam === 'true');
+    // --------- base-Parameter robust bereinigen ---------
+    const defaultBase = 'https://area-publish.area-webar.workers.dev';
+    const rawBase = (qs.get('base') || defaultBase);
 
-    function bust(u){
-      if (!DEV || !u) return u;
-      const sep = u.includes('?') ? '&' : '?';
-      return u + sep + 'v=' + Date.now();
-    }
+    let workerBase = rawBase;
+    workerBase = workerBase.split('"')[0];
+    workerBase = workerBase.split(',')[0];
+    workerBase = workerBase.trim();
+    workerBase = workerBase.replace(/\/scenes\/[^\/?#]+\/?$/,'');
+    workerBase = workerBase.replace(/\/+$/,'');
 
-    // --------- base-Parameter robust bereinigen ---------
-    const defaultBase = 'https://area-publish.area-webar.workers.dev';
-    const rawBase = (qs.get('base') || defaultBase);
+    if (!/^https?:\/\//i.test(workerBase)) {
+      console.warn('[area-viewer] Ungültiger base-Parameter, verwende Default. Rohwert:', rawBase);
+      workerBase = defaultBase;
+    }
 
-    let workerBase = rawBase;
-    workerBase = workerBase.split('"')[0];
-    workerBase = workerBase.split(',')[0];
-    workerBase = workerBase.trim();
-    workerBase = workerBase.replace(/\/scenes\/[^\/?#]+\/?$/,'');
-    workerBase = workerBase.replace(/\/+$/,'');
+    console.log('[area-viewer] workerBase:', workerBase);
 
-    if (!/^https?:\/\//i.test(workerBase)) {
-      console.warn('[area-viewer] Ungültiger base-Parameter, verwende Default. Rohwert:', rawBase);
-      workerBase = defaultBase;
-    }
+    // --------- URL-Parsing / Szenenpfade ---------
+    const sceneId = (qs.get('scene') || qs.get('src') || '').trim();
+    const overrideGlb  = (qs.get('glb')  || '').trim();
+    const overrideUsdz = (qs.get('usdz') || '').trim();
 
-    console.log('[area-viewer] workerBase:', workerBase);
+    const isHttp = (u)=> /^https?:\/\//i.test(u);
+    const isDataOrBlob = (u)=> u.startsWith('data:') || u.startsWith('blob:');
+    const endsWithAny = (u,exts)=> exts.some(ext=> u.toLowerCase().endsWith(ext));
 
-    // --------- URL-Parsing / Szenenpfade ---------
-    const sceneId = (qs.get('scene') || qs.get('src') || '').trim();
-    const overrideGlb  = (qs.get('glb')  || '').trim();
-    const overrideUsdz = (qs.get('usdz') || '').trim();
+    let SCENE_GLB  = '';
+    let SCENE_JSON = '';
 
-    const isHttp = (u)=> /^https?:\/\//i.test(u);
-    const isDataOrBlob = (u)=> u.startsWith('data:') || u.startsWith('blob:');
-    const endsWithAny = (u,exts)=> exts.some(ext=> u.toLowerCase().endsWith(ext));
+    if (overrideGlb) {
+      SCENE_GLB = overrideGlb;
+    }
 
-    let SCENE_GLB  = '';
-    let SCENE_JSON = '';
+    if (sceneId) {
+      if (isHttp(sceneId)) {
+        // Selten: scene als direkte URL
+        if (endsWithAny(sceneId, ['.glb','.gltf'])) {
+          if (!SCENE_GLB) SCENE_GLB = sceneId;
+        } else {
+          SCENE_JSON = sceneId;
+        }
+      } else {
+        const id = sceneId.replace(/\/+$/,'');
+        if (!SCENE_GLB) {
+          SCENE_GLB  = `${workerBase}/scenes/${encodeURIComponent(id)}/scene.glb`;
+        }
+        SCENE_JSON = `${workerBase}/scenes/${encodeURIComponent(id)}/scene.json`;
+      }
+    }
 
-    if (overrideGlb) {
-      SCENE_GLB = overrideGlb;
-    }
+    console.log('[area-viewer] SCENE_GLB:', SCENE_GLB);
+    console.log('[area-viewer] SCENE_JSON:', SCENE_JSON);
 
-    if (sceneId) {
-      if (isHttp(sceneId)) {
-        // Selten: scene als direkte URL
-        if (endsWithAny(sceneId, ['.glb','.gltf'])) {
-          if (!SCENE_GLB) SCENE_GLB = sceneId;
-        } else {
-          SCENE_JSON = sceneId;
-        }
-      } else {
-        const id = sceneId.replace(/\/+$/,'');
-        if (!SCENE_GLB) {
-          SCENE_GLB  = `${workerBase}/scenes/${encodeURIComponent(id)}/scene.glb`;
-        }
-        SCENE_JSON = `${workerBase}/scenes/${encodeURIComponent(id)}/scene.json`;
-      }
-    }
+    // --------- DOM-Refs ---------
+    const errBox      = document.getElementById('err');
+    const mv          = document.getElementById('mv');
+    const poster      = document.getElementById('poster');
+    const startBtn    = document.getElementById('startAr');
+    const posterTitle = document.getElementById('posterTitle');
+    const posterDesc  = document.getElementById('posterDesc');
+    const posterImage = document.getElementById('posterImage');
 
-    console.log('[area-viewer] SCENE_GLB:', SCENE_GLB);
-    console.log('[area-viewer] SCENE_JSON:', SCENE_JSON);
-
-    // --------- DOM-Refs ---------
-    const errBox      = document.getElementById('err');
-    const mv          = document.getElementById('mv');
-    const poster      = document.getElementById('poster');
-    const startBtn    = document.getElementById('startAr');
-    const posterTitle = document.getElementById('posterTitle');
-    const posterDesc  = document.getElementById('posterDesc');
-    const posterImage = document.getElementById('posterImage');
-
-    function showError(msg){
-      errBox.textContent = msg;
-      errBox.style.display = 'block';
-      console.error('[area-viewer]', msg);
-    }
-
-    // --------- Konfig mit Defaults ---------
-    const cfg = {
-      glbUrl: SCENE_GLB || "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
-      usdzUrl: null,
-      animation: {
-        clipName: "*",
-        loop: true,        // true = wiederholen, false = einmal
-        iterations: 9999   // Anzahl Wiederholungen, bei loop=true
-      },
-      meta:{
-        title: null,
-        description: null
-      },
-      welcome:{
-        eyebrow: "",
-        title: "",
-        desc: "",
-        posterFile: null
-      }
-    };
-
-    // --------- Szene + JSON laden ---------
-    (async () => {
-      try {
-        if (SCENE_JSON && !isDataOrBlob(SCENE_JSON)) {
-          const r = await fetch(bust(SCENE_JSON), { cache:'no-cache' });
-          if (!r.ok) throw new Error('scene.json: ' + r.status + ' ' + r.statusText);
-          const j = await r.json();
-          console.log('[area-viewer] scene.json:', j);
-
-          // Animation
-          if (j.animation) {
-            if (j.animation.clipName)   cfg.animation.clipName   = String(j.animation.clipName);
-            if (typeof j.animation.loop === 'boolean') cfg.animation.loop = j.animation.loop;
-            if (Number.isFinite(j.animation.iterations)) cfg.animation.iterations = j.animation.iterations|0;
-          }
-
-          // Meta
-          if (j.meta) {
-            if (typeof j.meta.title === 'string')       cfg.meta.title       = j.meta.title;
-            if (typeof j.meta.description === 'string') cfg.meta.description = j.meta.description;
-          }
-
-          // Welcome / Poster (Light-Editor: ui.welcome.*)
-          if (j.ui && j.ui.welcome) {
-            const wl = j.ui.welcome;
-            if (typeof wl.title === 'string' && wl.title)   cfg.welcome.title   = wl.title;
-            if (typeof wl.desc === 'string' && wl.desc)     cfg.welcome.desc    = wl.desc;
-            if (typeof wl.eyebrow === 'string' && wl.eyebrow) cfg.welcome.eyebrow = wl.eyebrow;
-            if (typeof wl.poster === 'string' && wl.poster) cfg.welcome.posterFile = wl.poster;
-          }
-
-          // Model-URL (relativ aus JSON) als Fallback
-          if (j.model && j.model.url && !overrideGlb) {
-            // Falls es "scene.glb" ist, nehmen wir SCENE_GLB; sonst die absolute URL daraus machen.
-            if (!SCENE_GLB) {
-              if (sceneId && !isHttp(j.model.url)) {
-                cfg.glbUrl = `${workerBase}/scenes/${encodeURIComponent(sceneId)}/${j.model.url}`;
-              } else {
-                cfg.glbUrl = j.model.url;
-              }
-            }
-          }
-
-          // Audio/USDC später, fürs Erste ignorieren oder nur usdz übernehmen
-          if (j.model && j.model.usdzUrl && !overrideUsdz) {
-            cfg.usdzUrl = j.model.usdzUrl;
-          }
-        }
-
-        // Texte auf Poster anwenden
-        const finalTitle = cfg.meta.title || cfg.welcome.title || "ARea AR-Erlebnis";
-        const finalDesc  = cfg.meta.description || cfg.welcome.desc ||
-          "Tippe auf „AR starten“, richte dein Gerät auf eine ebene Fläche und platziere dann das 3D-Modell.";
-
-        posterTitle.textContent = finalTitle;
-        posterDesc.textContent  = finalDesc;
-
-        // Poster-Bild: bevorzugt ui.welcome.poster (Dateiname aus Editor)
-        let posterUrl = null;
-        if (cfg.welcome.posterFile && sceneId) {
-          posterUrl = `${workerBase}/scenes/${encodeURIComponent(sceneId)}/${encodeURIComponent(cfg.welcome.posterFile)}`;
-        }
-
-        if (posterUrl) {
-          posterImage.src = posterUrl;
-          posterImage.style.display = 'block';
-        } else {
-          posterImage.style.display = 'none';
-        }
-
-        // finale GLB-URL
-        const finalGlb = SCENE_GLB || cfg.glbUrl || "https://modelviewer.dev/shared-assets/models/Astronaut.glb";
-        mv.src = bust(finalGlb);
-
-        if (overrideUsdz) {
-          mv.setAttribute('ios-src', overrideUsdz);
-        } else if (cfg.usdzUrl) {
-          mv.setAttribute('ios-src', cfg.usdzUrl);
-        } else {
-          mv.removeAttribute('ios-src');
-        }
-
-      } catch(e){
-        showError('Szene konnte nicht geladen werden: ' + e.message);
-        console.error(e);
-      }
-    })();
-
-    // --------- Animation + Loop / Wiederholungen ---------
-    mv.addEventListener('load', () => {
-      const names = mv.availableAnimations || [];
-      console.log('[area-viewer] availableAnimations:', names);
-
-      // ... mv.addEventListener('load', ...) ENDET HIER
-
-    // --------- NEUE UI LOGIK (CLOSE & CAPTURE) ---------
+    // NEUE UI Refs
     const arUi = document.getElementById('ar-ui');
     const closeArBtn = document.getElementById('closeArBtn');
     const captureButton = document.getElementById('captureButton');
 
+
+    function showError(msg){
+      errBox.textContent = msg;
+      errBox.style.display = 'block';
+      console.error('[area-viewer]', msg);
+    }
+
+    // --------- Konfig mit Defaults ---------
+    const cfg = {
+      glbUrl: SCENE_GLB || "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
+      usdzUrl: null,
+      animation: {
+        clipName: "*",
+        loop: true,        // true = wiederholen, false = einmal
+        iterations: 9999   // Anzahl Wiederholungen, bei loop=true
+      },
+      meta:{
+        title: null,
+        description: null
+      },
+      welcome:{
+        eyebrow: "",
+        title: "",
+        desc: "",
+        posterFile: null
+      }
+    };
+
+    // --------- Szene + JSON laden ---------
+    (async () => {
+      try {
+        if (SCENE_JSON && !isDataOrBlob(SCENE_JSON)) {
+          const r = await fetch(bust(SCENE_JSON), { cache:'no-cache' });
+          if (!r.ok) throw new Error('scene.json: ' + r.status + ' ' + r.statusText);
+          const j = await r.json();
+          console.log('[area-viewer] scene.json:', j);
+
+          // Animation
+          if (j.animation) {
+            if (j.animation.clipName)   cfg.animation.clipName   = String(j.animation.clipName);
+            if (typeof j.animation.loop === 'boolean') cfg.animation.loop = j.animation.loop;
+            if (Number.isFinite(j.animation.iterations)) cfg.animation.iterations = j.animation.iterations|0;
+          }
+
+          // Meta
+          if (j.meta) {
+            if (typeof j.meta.title === 'string')       cfg.meta.title       = j.meta.title;
+            if (typeof j.meta.description === 'string') cfg.meta.description = j.meta.description;
+          }
+
+          // Welcome / Poster (Light-Editor: ui.welcome.*)
+          if (j.ui && j.ui.welcome) {
+            const wl = j.ui.welcome;
+            if (typeof wl.title === 'string' && wl.title)   cfg.welcome.title   = wl.title;
+            if (typeof wl.desc === 'string' && wl.desc)     cfg.welcome.desc    = wl.desc;
+            if (typeof wl.eyebrow === 'string' && wl.eyebrow) cfg.welcome.eyebrow = wl.eyebrow;
+            if (typeof wl.poster === 'string' && wl.poster) cfg.welcome.posterFile = wl.poster;
+          }
+
+          // Model-URL (relativ aus JSON) als Fallback
+          if (j.model && j.model.url && !overrideGlb) {
+            // Falls es "scene.glb" ist, nehmen wir SCENE_GLB; sonst die absolute URL daraus machen.
+            if (!SCENE_GLB) {
+              if (sceneId && !isHttp(j.model.url)) {
+                cfg.glbUrl = `${workerBase}/scenes/${encodeURIComponent(sceneId)}/${j.model.url}`;
+              } else {
+                cfg.glbUrl = j.model.url;
+              }
+            }
+          }
+
+          // Audio/USDC später, fürs Erste ignorieren oder nur usdz übernehmen
+          if (j.model && j.model.usdzUrl && !overrideUsdz) {
+            cfg.usdzUrl = j.model.usdzUrl;
+          }
+        }
+
+        // Texte auf Poster anwenden
+        const finalTitle = cfg.meta.title || cfg.welcome.title || "ARea AR-Erlebnis";
+        const finalDesc  = cfg.meta.description || cfg.welcome.desc ||
+          "Tippe auf „AR starten“, richte dein Gerät auf eine ebene Fläche und platziere dann das 3D-Modell.";
+
+        posterTitle.textContent = finalTitle;
+        posterDesc.textContent  = finalDesc;
+
+        // Poster-Bild: bevorzugt ui.welcome.poster (Dateiname aus Editor)
+        let posterUrl = null;
+        if (cfg.welcome.posterFile && sceneId) {
+          posterUrl = `${workerBase}/scenes/${encodeURIComponent(sceneId)}/${encodeURIComponent(cfg.welcome.posterFile)}`;
+        }
+
+        if (posterUrl) {
+          posterImage.src = posterUrl;
+          posterImage.style.display = 'block';
+        } else {
+          posterImage.style.display = 'none';
+        }
+
+        // finale GLB-URL
+        const finalGlb = SCENE_GLB || cfg.glbUrl || "https://modelviewer.dev/shared-assets/models/Astronaut.glb";
+        mv.src = bust(finalGlb);
+
+        if (overrideUsdz) {
+          mv.setAttribute('ios-src', overrideUsdz);
+        } else if (cfg.usdzUrl) {
+          mv.setAttribute('ios-src', cfg.usdzUrl);
+        } else {
+          mv.removeAttribute('ios-src');
+        }
+
+      } catch(e){
+        showError('Szene konnte nicht geladen werden: ' + e.message);
+        console.error(e);
+      }
+    })();
+
+    // --------- Animation + Loop / Wiederholungen ---------
+    mv.addEventListener('load', () => {
+      const names = mv.availableAnimations || [];
+      console.log('[area-viewer] availableAnimations:', names);
+
+      // Clip auswählen: cfg.animation.clipName oder fallback erster Clip
+      let sel = cfg.animation.clipName;
+      let chosen = null;
+
+      if (sel === 'none') {
+        chosen = null;
+      } else if (sel === '*' || sel == null) {
+        chosen = names[0] || null;
+      } else if (typeof sel === 'string') {
+        if (/^\d+$/.test(sel)) {
+          const idx = Math.max(0, Math.min(names.length-1, parseInt(sel,10)));
+          chosen = names[idx] || null;
+        } else {
+          chosen = names.includes(sel) ? sel : (names[0] || null);
+        }
+      } else if (Number.isFinite(sel)) {
+        const idx = Math.max(0, Math.min(names.length-1, sel|0));
+        chosen = names[idx] || null;
+      }
+
+      console.log('[area-viewer] chosen animation:', chosen,
+                  'loop:', cfg.animation.loop,
+                  'iterations:', cfg.animation.iterations);
+
+      if (!chosen) {
+        mv.animationName = null;
+        mv.autoplay = false;
+        return;
+      }
+
+      mv.animationName = chosen;
+      mv.autoplay = true;
+
+      try { mv.play(); } catch(e){ console.warn('[area-viewer] play() failed:', e); }
+
+      // Loop-Logik:
+      // - loop = true  + iterations  = N  → N Wiederholungen, dann Pause
+      // - loop = true  + iterations >= 9999 → effektiv: Endlosschleife
+      // - loop = false → einmal abspielen
+      const loopFlag = !!cfg.animation.loop;
+      const itRaw    = cfg.animation.iterations;
+      let repeatTotal = null;
+
+      if (loopFlag) {
+        if (Number.isFinite(itRaw) && itRaw > 0 && itRaw < 9999) {
+          repeatTotal = itRaw;
+        } else {
+          // Endlosschleife → kein Counter
+          repeatTotal = null;
+        }
+      } else {
+        repeatTotal = 1; // einmal abspielen
+      }
+
+      if (repeatTotal && repeatTotal > 0) {
+        let loops    = 0;
+        let lastTime = 0;
+        let stopped  = false;
+
+        const onTimeUpdate = () => {
+          if (stopped) return;
+          const t = mv.currentTime || 0;
+          // Wenn currentTime "zurückspringt" → neuer Loop
+          if (t < lastTime) {
+            loops++;
+            console.log('[area-viewer] loop detected, count =', loops);
+            if (loops >= repeatTotal) {
+              try { mv.pause(); } catch {}
+              stopped = true;
+              mv.removeEventListener('timeupdate', onTimeUpdate);
+              return;
+            }
+          }
+          lastTime = t;
+        };
+
+        mv.addEventListener('timeupdate', onTimeUpdate);
+      }
+    }); // <-- Ende des Load Listeners
+
+
+    // ------------------------------------------------------------------
+    // --------- NEUE UI LOGIK (CLOSE & CAPTURE) ---------------------
+    // ------------------------------------------------------------------
+    
     // Funktion zum Ausblenden der UI und Beenden der AR-Sitzung
     closeArBtn?.addEventListener('click', () => {
         // Deaktiviert die AR-Sitzung, falls aktiv
@@ -428,158 +508,43 @@
         if (event.detail.status === 'session-started') {
             arUi.style.display = 'flex'; // UI einblenden
         } else if (event.detail.status === 'not-presenting') {
-             arUi.style.display = 'none'; // UI ausblenden, wenn AR beendet wird
+            arUi.style.display = 'none'; // UI ausblenden, wenn AR beendet wird
         }
     });
 
-    // --------- AR-Start über Poster-Button ---------
-    // HIER ÄNDERT SICH NICHTS, ABER DIE LOGIK IST JETZT KOMPLETT
-    startBtn.addEventListener('click', async (ev) => {
-        // ... (bestehender Code von startBtn bleibt gleich) ...
-        ev.preventDefault();
-        ev.stopPropagation();
 
-        if (!mv.hasAttribute('ar')) {
-            showError('AR ist für diese Szene nicht aktiviert.');
-            return;
-        }
+    // --------- AR-Start über Poster-Button ---------
+    startBtn.addEventListener('click', async (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
 
-        startBtn.disabled = true;
+      if (!mv.hasAttribute('ar')) {
+        showError('AR ist für diese Szene nicht aktiviert.');
+        return;
+      }
 
-        try {
-            poster.style.display = 'none';
+      startBtn.disabled = true;
 
-            if (typeof mv.activateAR === 'function') {
-                await mv.activateAR();
-            } else if (typeof mv.enterAR === 'function') {
-                await mv.enterAR();
-            } else {
-                throw new Error('AR wird von diesem Browser nicht unterstützt.');
-            }
-        } catch (e) {
-            showError('AR konnte nicht gestartet werden: ' + e.message);
-            console.error('[area-viewer] AR start error', e);
-            poster.style.display = 'flex';
-        } finally {
-            startBtn.disabled = false;
-        }
-    });
+      try {
+        poster.style.display = 'none';
 
-})();
-</script>
+        if (typeof mv.activateAR === 'function') {
+          await mv.activateAR();
+        } else if (typeof mv.enterAR === 'function') {
+          await mv.enterAR();
+        } else {
+          throw new Error('AR wird von diesem Browser nicht unterstützt.');
+        }
+      } catch (e) {
+        showError('AR konnte nicht gestartet werden: ' + e.message);
+        console.error('[area-viewer] AR start error', e);
+        poster.style.display = 'flex';
+      } finally {
+        startBtn.disabled = false;
+      }
+    });
 
-      // Clip auswählen: cfg.animation.clipName oder fallback erster Clip
-      let sel = cfg.animation.clipName;
-      let chosen = null;
-
-      if (sel === 'none') {
-        chosen = null;
-      } else if (sel === '*' || sel == null) {
-        chosen = names[0] || null;
-      } else if (typeof sel === 'string') {
-        if (/^\d+$/.test(sel)) {
-          const idx = Math.max(0, Math.min(names.length-1, parseInt(sel,10)));
-          chosen = names[idx] || null;
-        } else {
-          chosen = names.includes(sel) ? sel : (names[0] || null);
-        }
-      } else if (Number.isFinite(sel)) {
-        const idx = Math.max(0, Math.min(names.length-1, sel|0));
-        chosen = names[idx] || null;
-      }
-
-      console.log('[area-viewer] chosen animation:', chosen,
-                  'loop:', cfg.animation.loop,
-                  'iterations:', cfg.animation.iterations);
-
-      if (!chosen) {
-        mv.animationName = null;
-        mv.autoplay = false;
-        return;
-      }
-
-      mv.animationName = chosen;
-      mv.autoplay = true;
-
-      try { mv.play(); } catch(e){ console.warn('[area-viewer] play() failed:', e); }
-
-      // Loop-Logik:
-      // - loop = true  + iterations  = N  → N Wiederholungen, dann Pause
-      // - loop = true  + iterations >= 9999 → effektiv: Endlosschleife
-      // - loop = false → einmal abspielen
-      const loopFlag = !!cfg.animation.loop;
-      const itRaw    = cfg.animation.iterations;
-      let repeatTotal = null;
-
-      if (loopFlag) {
-        if (Number.isFinite(itRaw) && itRaw > 0 && itRaw < 9999) {
-          repeatTotal = itRaw;
-        } else {
-          // Endlosschleife → kein Counter
-          repeatTotal = null;
-        }
-      } else {
-        repeatTotal = 1; // einmal abspielen
-      }
-
-      if (repeatTotal && repeatTotal > 0) {
-        let loops    = 0;
-        let lastTime = 0;
-        let stopped  = false;
-
-        const onTimeUpdate = () => {
-          if (stopped) return;
-          const t = mv.currentTime || 0;
-          // Wenn currentTime "zurückspringt" → neuer Loop
-          if (t < lastTime) {
-            loops++;
-            console.log('[area-viewer] loop detected, count =', loops);
-            if (loops >= repeatTotal) {
-              try { mv.pause(); } catch {}
-              stopped = true;
-              mv.removeEventListener('timeupdate', onTimeUpdate);
-              return;
-            }
-          }
-          lastTime = t;
-        };
-
-        mv.addEventListener('timeupdate', onTimeUpdate);
-      }
-    });
-
-    // --------- AR-Start über Poster-Button ---------
-    startBtn.addEventListener('click', async (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-
-      if (!mv.hasAttribute('ar')) {
-        showError('AR ist für diese Szene nicht aktiviert.');
-        return;
-      }
-
-      startBtn.disabled = true;
-
-      try {
-        poster.style.display = 'none';
-
-        if (typeof mv.activateAR === 'function') {
-          await mv.activateAR();
-        } else if (typeof mv.enterAR === 'function') {
-          await mv.enterAR();
-        } else {
-          throw new Error('AR wird von diesem Browser nicht unterstützt.');
-        }
-      } catch (e) {
-        showError('AR konnte nicht gestartet werden: ' + e.message);
-        console.error('[area-viewer] AR start error', e);
-        poster.style.display = 'flex';
-      } finally {
-        startBtn.disabled = false;
-      }
-    });
-
-  })();
-  </script>
+  })();
+  </script>
 </body>
 </html>
