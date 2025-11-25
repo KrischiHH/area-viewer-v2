@@ -17,48 +17,6 @@
       font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
     }
 
-    /* NEUES UI FÜR AR-MODUS */
-    #ar-ui {
-        position: fixed;
-        top: 15px; /* Abstand oben */
-        right: 15px; /* Abstand rechts */
-        z-index: 1000;
-        display: none; /* Am Anfang versteckt */
-        gap: 10px;
-        flex-direction: row; /* Buttons nebeneinander */
-        /* Fügt Padding hinzu, um den Viewport-Fit zu respektieren, falls nötig */
-        padding-right: env(safe-area-inset-right);
-        padding-top: env(safe-area-inset-top);
-    }
-
-    .ar-ui-button {
-        appearance: none;
-        border: none;
-        background: rgba(0, 0, 0, 0.4);
-        backdrop-filter: blur(5px);
-        color: #fff;
-        font-size: 20px;
-        width: 44px;
-        height: 44px;
-        border-radius: 50%;
-        cursor: pointer;
-        line-height: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-        transition: background 0.2s;
-    }
-
-    .ar-ui-button:hover {
-        background: rgba(0, 0, 0, 0.6);
-    }
-
-    /* Wichtig: Blendet die UI aus, wenn das Poster angezeigt wird */
-    #poster[style*="display: flex;"] + model-viewer + #ar-ui {
-        display: none !important;
-    }
-
     /* Vollbild-Poster */
     #poster{
       position:fixed;
@@ -67,7 +25,7 @@
       align-items:center;
       justify-content:center;
       background:#05070c;
-      z-index:5;
+      z-index:100; /* ⬅️ ERHÖHT, damit es garantiert über dem WebGL-Canvas liegt */
       color:#fff;
       text-align:center;
       padding:24px;
@@ -124,6 +82,7 @@
       height:100svh;
       display:block;
       background:#000;
+      z-index:1; /* ⬅️ Hinzugefügt, um den Stacking Context zu definieren */
     }
 
     #err{
@@ -140,6 +99,48 @@
       max-width:min(92vw,680px);
       white-space:pre-wrap;
     }
+
+    /* NEUES UI FÜR AR-MODUS */
+    #ar-ui {
+        position: fixed;
+        top: 15px; /* Abstand oben */
+        right: 15px; /* Abstand rechts */
+        z-index: 1000;
+        display: none; /* Am Anfang versteckt */
+        gap: 10px;
+        flex-direction: row; /* Buttons nebeneinander */
+        /* Fügt Padding hinzu, um den Viewport-Fit zu respektieren */
+        padding-right: env(safe-area-inset-right);
+        padding-top: env(safe-area-inset-top);
+    }
+
+    .ar-ui-button {
+        appearance: none;
+        border: none;
+        background: rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(5px);
+        color: #fff;
+        font-size: 20px;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        cursor: pointer;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        transition: background 0.2s;
+    }
+
+    .ar-ui-button:hover {
+        background: rgba(0, 0, 0, 0.6);
+    }
+
+    /* Wichtig: Blendet die UI aus, wenn das Poster angezeigt wird */
+    #poster[style*="display: flex;"] + model-viewer + #ar-ui {
+        display: none !important;
+    }
   </style>
 </head>
 <body>
@@ -254,9 +255,9 @@
     const posterTitle = document.getElementById('posterTitle');
     const posterDesc  = document.getElementById('posterDesc');
     const posterImage = document.getElementById('posterImage');
-    const arUi        = document.getElementById('ar-ui'); // NEU: AR UI Ref
-    const closeArBtn  = document.getElementById('closeArBtn'); // NEU: Close Btn Ref
-    const captureButton = document.getElementById('captureButton'); // NEU: Capture Btn Ref
+    const arUi        = document.getElementById('ar-ui');
+    const closeArBtn  = document.getElementById('closeArBtn');
+    const captureButton = document.getElementById('captureButton');
 
     function showError(msg){
       errBox.textContent = msg;
@@ -316,38 +317,30 @@
             if (typeof wl.poster === 'string' && wl.poster) cfg.welcome.posterFile = wl.poster;
           }
 
-            // === START: KORRIGIERTE URL-BESTIMMUNGS-LOGIK ===
-            // Model-URL (relativ aus JSON) VOR SCENE_GLB als Fallback
+            // === KORRIGIERTE URL-BESTIMMUNGS-LOGIK ===
             if (j.model && j.model.url && !overrideGlb) {
                 if (sceneId && !isHttp(j.model.url)) {
-                    // Wenn relative URL im JSON und wir eine sceneId haben
                     cfg.glbUrl = `${workerBase}/scenes/${encodeURIComponent(sceneId)}/${j.model.url}`;
                 } else {
-                    // Absolute URL oder keine sceneId
                     cfg.glbUrl = j.model.url;
                 }
             } else if (!SCENE_GLB) {
-                // Fallback auf die geratene scene.glb, falls nichts anderes gesetzt
                 if (sceneId) {
                      cfg.glbUrl = `${workerBase}/scenes/${encodeURIComponent(sceneId)}/scene.glb`;
                 }
             }
-            // HIER: SCENE_GLB hat Vorrang, falls gesetzt (via URL-Param 'glb')
             if (SCENE_GLB) {
                 cfg.glbUrl = SCENE_GLB;
             }
 
-            // USDZ-URL setzen (für iOS Quick Look)
             if (overrideUsdz) {
                 cfg.usdzUrl = overrideUsdz;
             } else if (j.model && j.model.usdzUrl) {
-                // USDZ aus scene.json (wichtig für iOS!)
                 cfg.usdzUrl = j.model.usdzUrl;
             } else if (sceneId) {
-                // Fallback: Geratene scene.usdz
                 cfg.usdzUrl = `${workerBase}/scenes/${encodeURIComponent(sceneId)}/scene.usdz`;
             }
-            // === ENDE: KORRIGIERTE URL-BESTIMMUNGS-LOGIK ===
+            // === ENDE KORRIGIERTE URL-BESTIMMUNGS-LOGIK ===
         }
 
         // Texte auf Poster anwenden
@@ -429,9 +422,6 @@
       try { mv.play(); } catch(e){ console.warn('[area-viewer] play() failed:', e); }
 
       // Loop-Logik:
-      // - loop = true  + iterations  = N  → N Wiederholungen, dann Pause
-      // - loop = true  + iterations >= 9999 → effektiv: Endlosschleife
-      // - loop = false → einmal abspielen
       const loopFlag = !!cfg.animation.loop;
       const itRaw    = cfg.animation.iterations;
       let repeatTotal = null;
@@ -530,7 +520,6 @@
             return;
         }
         
-        // NEU: Prüfung, ob AR-Session überhaupt gestartet werden kann
         if (typeof mv.canActivateAR === 'function' && !mv.canActivateAR()) {
             showError('AR wird von diesem Gerät/Browser nicht unterstützt oder das Modell ist nicht verfügbar (z.B. fehlende USDZ auf iOS).');
             return;
@@ -544,7 +533,6 @@
             if (typeof mv.activateAR === 'function') {
                 await mv.activateAR();
             } else if (typeof mv.enterAR === 'function') {
-                // Fallback für ältere model-viewer Versionen
                 await mv.enterAR();
             } else {
                 throw new Error('AR-Funktion nicht gefunden. model-viewer veraltet?');
@@ -557,7 +545,6 @@
             startBtn.disabled = false;
         }
     });
-    // --------- ENDE AR-Start Button Logik ---------
 
 })();
 </script>
