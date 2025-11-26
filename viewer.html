@@ -4,15 +4,20 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
   <title>ARea Viewer – Surface AR</title>
+
   <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+
   <style>
     :root{color-scheme:dark light}
     *,*::before,*::after{box-sizing:border-box}
     html,body{
-      margin:0; height:100%; background:#000 !important;
+      margin:0; height:100%;
+      background:#000 !important;
       font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
       overscroll-behavior:none; touch-action:manipulation;
     }
+
+    /* Poster */
     #poster{
       position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
       background:#05070c; z-index:9999; color:#fff; text-align:center; padding:24px;
@@ -20,12 +25,10 @@
     #poster-inner{
       max-width:420px; width:100%; padding:24px 20px; border-radius:24px;
       background:radial-gradient(circle at top,#243b74,#05070c);
-      box-shadow:0 18px 40px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.15);
+      box-shadow:0 18px 40px rgba(0,0,0,0.6);
+      border:1px solid rgba(255,255,255,0.15);
     }
-    #posterImage{
-      width:100%; max-height:220px; object-fit:cover; border-radius:16px;
-      display:none; margin-bottom:16px; background:#111;
-    }
+    #posterImage{ width:100%; max-height:220px; object-fit:cover; border-radius:16px; display:none; margin-bottom:16px; background:#111; }
     #poster h1{ font-size:22px; margin:0 0 8px; }
     #poster p{ margin:0 0 16px; font-size:14px; opacity:0.9; }
     #startAr{
@@ -35,17 +38,20 @@
     }
     #startAr[disabled]{ opacity:.55; cursor:wait; }
 
+    /* model-viewer Host */
     model-viewer{
       position:fixed; inset:0; width:100vw; height:100svh; display:block;
       background:#000 !important; z-index:1;
     }
 
+    /* Fehler */
     #err{
       position:fixed; left:12px; top:12px; z-index:10000; background:#b00020; color:#fff;
       padding:8px 10px; border-radius:8px; display:none; font:12px/1.35 monospace;
       max-width:min(92vw,680px); white-space:pre-wrap; box-shadow:0 4px 16px rgba(0,0,0,.5);
     }
 
+    /* AR UI */
     #ar-ui{
       position:fixed; inset:0; z-index:9000; display:none; pointer-events:none; font-family:inherit;
     }
@@ -88,12 +94,8 @@
       border-color:#5ddcff;
       box-shadow:0 0 0 2px rgba(0,0,0,.55), 0 0 16px #5ddcff, 0 0 4px #3c67e3 inset;
     }
-    .link-hotspot:active .hotspot-ring{
-      animation:hotspot-tap .4s ease;
-    }
-    @keyframes hotspot-tap{
-      0%{transform:scale(1);}40%{transform:scale(.85);}100%{transform:scale(1);}
-    }
+    .link-hotspot:active .hotspot-ring{ animation:hotspot-tap .4s ease; }
+    @keyframes hotspot-tap{ 0%{transform:scale(1);}40%{transform:scale(.85);}100%{transform:scale(1);} }
     .link-hotspot[data-style="invisible"] .hotspot-ring{ display:none; }
     .link-hotspot[data-style="icon"] .hotspot-ring{ display:none; }
     .link-hotspot[data-style="icon"] .hotspot-icon{
@@ -152,8 +154,10 @@
     const qs = new URLSearchParams(location.search);
     const DEV = qs.has('dev');
     const prefer = qs.get('prefer');
+
     const mv = document.getElementById('mv');
     const errBox = document.getElementById('err');
+
     const poster = document.getElementById('poster');
     const posterTitle = document.getElementById('posterTitle');
     const posterDesc  = document.getElementById('posterDesc');
@@ -313,7 +317,6 @@
         if (cfg.usdzUrl) mv.setAttribute('ios-src', cfg.usdzUrl);
         else mv.removeAttribute('ios-src');
 
-        // Audio vorbereiten (nur Web-Kontext, nicht nativer Viewer)
         if (cfg.audio){
           audioEl = new Audio();
           audioEl.src = bust(cfg.audio.url);
@@ -346,9 +349,9 @@
 
         if (btn.dataset.style === 'icon' && node.icon){
           const iconSpan = document.createElement('span');
-            iconSpan.className='hotspot-icon';
-            iconSpan.textContent=node.icon;
-            btn.appendChild(iconSpan);
+          iconSpan.className='hotspot-icon';
+          iconSpan.textContent=node.icon;
+          btn.appendChild(iconSpan);
         } else if (btn.dataset.style !== 'invisible') {
           const ring = document.createElement('span');
           ring.className='hotspot-ring';
@@ -365,17 +368,14 @@
       });
     }
 
-    // Animation Handling
     mv.addEventListener('load', () => {
       const names = mv.availableAnimations || [];
-      // Simplified: autoplay first animation if exists
       if (names && names.length){
         mv.animationName = names[0];
         mv.play().catch(e=>console.warn('play failed', e));
       }
     });
 
-    // AR Status
     mv.addEventListener('ar-status', e => {
       if (e.detail.status === 'session-started'){
         arUi.style.display='block';
@@ -416,18 +416,14 @@
       }
     });
 
-    // Close AR
     btnCloseAr.addEventListener('click', () => {
-      try {
-        if (mv.isArActive && typeof mv.stopAr === 'function') mv.stopAr();
-      } catch(_){}
+      try { if (mv.isArActive && typeof mv.stopAr === 'function') mv.stopAr(); } catch(_){}
       arUi.style.display='none';
       poster.style.display='flex';
       stopVideoRecording(false);
       if (audioEl){ try{ audioEl.pause(); audioEl.currentTime=0; }catch(_){} }
     });
 
-    // Screenshot
     btnCapture.addEventListener('click', () => {
       const canvas = mv.shadowRoot?.querySelector('canvas') || document.querySelector('canvas');
       if (!canvas){ showError('Kein Canvas für Screenshot gefunden.'); return; }
@@ -444,14 +440,10 @@
       }, 'image/png');
     });
 
-    // Video Aufnahme
     function startVideoRecording(){
       if (recording) return;
       const canvas = mv.shadowRoot?.querySelector('canvas') || document.querySelector('canvas');
-      if (!canvas || !canvas.captureStream){
-        showError('Videoaufnahme nicht unterstützt.');
-        return;
-      }
+      if (!canvas || !canvas.captureStream){ showError('Videoaufnahme nicht unterstützt.'); return; }
       const stream = canvas.captureStream(30);
       try {
         mediaRecorder = new MediaRecorder(stream, { mimeType:'video/webm;codecs=vp9' });
