@@ -73,7 +73,7 @@
       border-radius:8px; display:none; pointer-events:none; box-shadow:0 4px 14px rgba(0,0,0,.6);
     }
 
-    /* Ring-Hotspots */
+    /* Ring-Hotspots (für klickbare URLs aus scene.json) */
     .link-hotspot{
       position:relative; background:none; border:none; padding:0;
       width:64px; height:64px; cursor:pointer; display:inline-flex;
@@ -170,23 +170,16 @@
     const btnCloseAr  = document.getElementById('btn-close-ar');
     const captureStatus = document.getElementById('captureStatus');
 
+    // Android: optional native-first
     if (prefer === 'native'){
       mv.setAttribute('ar-modes','scene-viewer webxr quick-look');
     } else {
       mv.setAttribute('ar-modes','webxr scene-viewer quick-look');
     }
 
-    function showError(msg){
-      errBox.textContent = msg;
-      errBox.style.display = 'block';
-      console.error('[viewer]', msg);
-    }
+    function showError(msg){ errBox.textContent = msg; errBox.style.display='block'; console.error('[viewer]', msg); }
     function hideError(){ errBox.style.display='none'; }
-    function bust(u){
-      if (!DEV || !u) return u;
-      const sep = u.includes('?')?'&':'?';
-      return u + sep + 'v=' + Date.now();
-    }
+    function bust(u){ if (!DEV || !u) return u; const sep = u.includes('?')?'&':'?'; return u + sep + 'v=' + Date.now(); }
 
     const defaultBase = 'https://area-publish.area-webar.workers.dev';
     const rawBase = (qs.get('base') || defaultBase);
@@ -368,6 +361,7 @@
       });
     }
 
+    // Animation optional
     mv.addEventListener('load', () => {
       const names = mv.availableAnimations || [];
       if (names && names.length){
@@ -376,6 +370,7 @@
       }
     });
 
+    // AR-Status → UI und Audio
     mv.addEventListener('ar-status', e => {
       if (e.detail.status === 'session-started'){
         arUi.style.display='block';
@@ -387,6 +382,7 @@
       }
     });
 
+    // Start
     startBtn.addEventListener('click', async ev => {
       ev.preventDefault(); ev.stopPropagation(); hideError();
       if (!mv.hasAttribute('ar')){
@@ -416,6 +412,7 @@
       }
     });
 
+    // AR beenden
     btnCloseAr.addEventListener('click', () => {
       try { if (mv.isArActive && typeof mv.stopAr === 'function') mv.stopAr(); } catch(_){}
       arUi.style.display='none';
@@ -424,6 +421,7 @@
       if (audioEl){ try{ audioEl.pause(); audioEl.currentTime=0; }catch(_){} }
     });
 
+    // Screenshot
     btnCapture.addEventListener('click', () => {
       const canvas = mv.shadowRoot?.querySelector('canvas') || document.querySelector('canvas');
       if (!canvas){ showError('Kein Canvas für Screenshot gefunden.'); return; }
@@ -440,6 +438,7 @@
       }, 'image/png');
     });
 
+    // Videoaufnahme
     function startVideoRecording(){
       if (recording) return;
       const canvas = mv.shadowRoot?.querySelector('canvas') || document.querySelector('canvas');
