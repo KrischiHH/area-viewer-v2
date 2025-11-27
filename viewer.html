@@ -4,53 +4,152 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
   <title>ARea Viewer – Surface AR</title>
+
   <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+
   <style>
     :root{color-scheme:dark light}
     *,*::before,*::after{box-sizing:border-box}
-    html,body{margin:0;height:100%;background:#000 !important;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;overscroll-behavior:none;touch-action:manipulation}
-    #poster{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#05070c;z-index:9999;color:#fff;text-align:center;padding:24px}
-    #poster-inner{max-width:420px;width:100%;padding:24px 20px;border-radius:24px;background:radial-gradient(circle at top,#243b74,#05070c);box-shadow:0 18px 40px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.15)}
-    #posterImage{width:100%;max-height:220px;object-fit:cover;border-radius:16px;display:none;margin-bottom:16px;background:#111}
-    #poster h1{font-size:22px;margin:0 0 8px}
-    #poster p{margin:0 0 16px;font-size:14px;opacity:0.9}
-    #startAr{appearance:none;border:none;border-radius:999px;padding:10px 22px;font-size:15px;font-weight:500;background:linear-gradient(135deg,#5ddcff,#3c67e3);color:#fff;cursor:pointer;box-shadow:0 10px 25px rgba(0,0,0,0.5)}
-    #startAr[disabled]{opacity:.55;cursor:wait}
-    model-viewer{position:fixed;inset:0;width:100vw;height:100svh;display:block;background:#000 !important;z-index:1}
+    html,body{
+      margin:0; height:100%;
+      background:#000 !important;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+      overscroll-behavior:none; touch-action:manipulation;
+    }
 
-    #err{position:fixed;left:12px;top:12px;z-index:10000;background:#b00020;color:#fff;padding:8px 10px;border-radius:8px;display:none;font:12px/1.35 monospace;max-width:min(92vw,680px);white-space:pre-wrap;box-shadow:0 4px 16px rgba(0,0,0,.5)}
+    /* Poster */
+    #poster{
+      position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+      background:#05070c; z-index:9999; color:#fff; text-align:center; padding:24px;
+    }
+    #poster-inner{
+      max-width:420px; width:100%; padding:24px 20px; border-radius:24px;
+      background:radial-gradient(circle at top,#243b74,#05070c);
+      box-shadow:0 18px 40px rgba(0,0,0,0.6);
+      border:1px solid rgba(255,255,255,0.15);
+    }
+    #posterImage{ width:100%; max-height:220px; object-fit:cover; border-radius:16px; display:none; margin-bottom:16px; background:#111; }
+    #poster h1{ font-size:22px; margin:0 0 8px; }
+    #poster p{ margin:0 0 16px; font-size:14px; opacity:0.9; }
+    #startAr{
+      appearance:none; border:none; border-radius:999px; padding:10px 22px; font-size:15px; font-weight:500;
+      background:linear-gradient(135deg,#5ddcff,#3c67e3); color:#fff; cursor:pointer;
+      box-shadow:0 10px 25px rgba(0,0,0,0.5);
+    }
+    #startAr[disabled]{ opacity:.55; cursor:wait; }
 
-    #ar-ui{position:fixed;inset:0;z-index:9000;display:none;pointer-events:none;font-family:inherit}
-    .bottom-bar{position:absolute;left:0;right:0;bottom:max(env(safe-area-inset-bottom),16px);display:flex;align-items:center;justify-content:center;gap:22px;pointer-events:auto;padding:0 18px}
-    #btn-gallery{width:54px;height:54px;border-radius:14px;overflow:hidden;border:1px solid rgba(255,255,255,.25);background:#0b0f16 center/cover no-repeat;box-shadow:0 6px 16px rgba(0,0,0,.6)}
-    #btn-gallery img{width:100%;height:100%;object-fit:cover;display:block}
-    #btn-gallery:empty::after{content:"";display:block;width:100%;height:100%;background:linear-gradient(135deg,#2a3a52,#253044)}
-    #btn-shutter{appearance:none;border:none;cursor:pointer;width:78px;height:78px;border-radius:50%;background:radial-gradient(circle at 50% 50%,#fff 60%,#dfe6f2 100%);box-shadow:0 8px 22px rgba(0,0,0,.6),0 0 0 4px rgba(255,255,255,.15),inset 0 2px 8px rgba(0,0,0,.2);position:relative;transition:transform 120ms ease}
-    #btn-shutter.recording{background:radial-gradient(circle at 50% 50%,#ff3b30 60%,#d7261b 100%);animation:pulse 1.1s ease-in-out infinite}
-    #btn-shutter.snap{animation:snap-blink 180ms ease-out}
-    @keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.06)}100%{transform:scale(1)}}
-    @keyframes snap-blink{0%{transform:scale(1)}50%{transform:scale(.9)}100%{transform:scale(1)}}
-    #rec-info{position:absolute;bottom:calc(max(env(safe-area-inset-bottom),16px)+96px);left:50%;transform:translateX(-50%);display:none;align-items:center;gap:8px;background:rgba(0,0,0,.55);color:#fff;font:12px/1.1 monospace;padding:6px 10px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.6);pointer-events:none}
-    #rec-dot{width:8px;height:8px;border-radius:50%;background:#ff3b30;box-shadow:0 0 12px #ff3b30;animation:blink 1s steps(2) infinite}
-    @keyframes blink{50%{opacity:.25}}
-    #captureStatus{position:absolute;bottom:calc(max(env(safe-area-inset-bottom),16px)+150px);left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);color:#fff;font:12px/1.3 monospace;padding:6px 10px;border-radius:8px;display:none;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.6)}
-    #screen-flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:9500}
-    #screen-flash.flash-active{animation:flash-fade 160ms ease-out}
-    @keyframes flash-fade{0%{opacity:.7}100%{opacity:0}}
-    @media (max-width:480px){#btn-shutter{width:68px;height:68px}#btn-gallery{width:50px;height:50px}}
+    /* model-viewer Host */
+    model-viewer{
+      position:fixed; inset:0; width:100vw; height:100svh; display:block;
+      background:#000 !important; z-index:1;
+    }
+
+    /* Fehler */
+    #err{
+      position:fixed; left:12px; top:12px; z-index:10000; background:#b00020; color:#fff;
+      padding:8px 10px; border-radius:8px; display:none; font:12px/1.35 monospace;
+      max-width:min(92vw,680px); white-space:pre-wrap; box-shadow:0 4px 16px rgba(0,0,0,.5);
+    }
+
+    /* AR UI – Kamera-Toolbar unten */
+    #ar-ui{
+      position:fixed; inset:0; z-index:9000; display:none; pointer-events:none; font-family:inherit;
+    }
+    .bottom-bar{
+      position:absolute; left:0; right:0;
+      bottom: max(env(safe-area-inset-bottom), 16px);
+      display:flex; align-items:center; justify-content:center; gap:22px;
+      pointer-events:auto;
+      padding: 0 18px;
+    }
+    /* Galerie-Vorschau (links) */
+    #btn-gallery{
+      width:54px; height:54px; border-radius:14px; overflow:hidden; border:1px solid rgba(255,255,255,.25);
+      background:#0b0f16 center/cover no-repeat;
+      box-shadow:0 6px 16px rgba(0,0,0,.6);
+    }
+    #btn-gallery img{ width:100%; height:100%; object-fit:cover; display:block; }
+    #btn-gallery:empty::after{
+      content:""; display:block; width:100%; height:100%;
+      background: linear-gradient(135deg,#2a3a52,#253044);
+    }
+
+    /* Auslöser (Mitte) */
+    #btn-shutter{
+      appearance:none; border:none; cursor:pointer;
+      width:78px; height:78px; border-radius:50%;
+      background: radial-gradient(circle at 50% 50%, #fff 60%, #dfe6f2 100%);
+      box-shadow:
+        0 8px 22px rgba(0,0,0,.6),
+        0 0 0 4px rgba(255,255,255,.15),
+        inset 0 2px 8px rgba(0,0,0,.2);
+      position:relative;
+      transition: transform 120ms ease;
+    }
+    #btn-shutter.recording{
+      background: radial-gradient(circle at 50% 50%, #ff3b30 60%, #d7261b 100%);
+      animation: pulse 1.1s ease-in-out infinite;
+    }
+    /* Snap-Blink (kurzer Impuls) */
+    #btn-shutter.snap{ animation: snap-blink 180ms ease-out; }
+    @keyframes pulse { 0%{transform:scale(1);} 50%{transform:scale(1.06);} 100%{transform:scale(1);} }
+    @keyframes snap-blink {
+      0%{transform:scale(1);}
+      50%{transform:scale(.9);}
+      100%{transform:scale(1);}
+    }
+
+    /* Aufnahme-Anzeige */
+    #rec-info{
+      position:absolute; bottom: calc(max(env(safe-area-inset-bottom), 16px) + 96px);
+      left:50%; transform:translateX(-50%);
+      display:none; align-items:center; gap:8px;
+      background: rgba(0,0,0,.55);
+      color:#fff; font:12px/1.1 monospace;
+      padding:6px 10px; border-radius:10px;
+      box-shadow:0 6px 18px rgba(0,0,0,.6);
+      pointer-events:none;
+    }
+    #rec-dot{
+      width:8px; height:8px; border-radius:50%; background:#ff3b30; box-shadow:0 0 12px #ff3b30;
+      animation: blink 1s steps(2) infinite;
+    }
+    @keyframes blink { 50%{ opacity:0.25; } }
+
+    /* Status unten (Toast) */
+    #captureStatus{
+      position:absolute; bottom: calc(max(env(safe-area-inset-bottom), 16px) + 150px);
+      left:50%; transform:translateX(-50%);
+      background:rgba(0,0,0,.7); color:#fff; font:12px/1.3 monospace;
+      padding:6px 10px; border-radius:8px; display:none; pointer-events:none;
+      box-shadow:0 4px 14px rgba(0,0,0,.6);
+    }
+
+    /* Screen-Flash beim Foto */
+    #screen-flash{
+      position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:9500;
+    }
+    #screen-flash.flash-active{ animation: flash-fade 160ms ease-out; }
+    @keyframes flash-fade { 0%{ opacity:.7 } 100%{ opacity:0 } }
+
+    @media (max-width:480px){
+      #btn-shutter{ width:68px; height:68px; }
+      #btn-gallery{ width:50px; height:50px; }
+    }
 
     /* Diagnose Overlay */
     #debug-overlay{
-      position:fixed;top:8px;right:8px;z-index:12000;
-      background:rgba(0,0,0,.65);color:#fff;font:11px/1.4 monospace;
-      padding:8px 10px;border:1px solid rgba(255,255,255,.2);border-radius:8px;
-      max-width:260px;display:none;white-space:pre-wrap;backdrop-filter:blur(4px)
+      position:fixed; top:8px; right:8px; z-index:12000;
+      background:rgba(0,0,0,.65); color:#fff; font:11px/1.4 monospace;
+      padding:8px 10px; border:1px solid rgba(255,255,255,.2); border-radius:8px;
+      max-width:260px; display:none; white-space:pre-wrap; backdrop-filter:blur(4px)
     }
-    #debug-overlay strong{color:#5ddcff}
+    #debug-overlay strong{ color:#5ddcff }
   </style>
 </head>
 <body>
   <div id="err"></div>
+
   <div id="poster">
     <div id="poster-inner">
       <img id="posterImage" alt="">
@@ -59,7 +158,11 @@
       <button id="startAr">AR starten</button>
     </div>
   </div>
+
+  <!-- Screen-Flash Overlay -->
   <div id="screen-flash"></div>
+
+  <!-- Kamera-UI nur in AR (oder im Debug) -->
   <div id="ar-ui">
     <div id="rec-info"><span id="rec-dot"></span><span id="rec-time">00:00</span></div>
     <div class="bottom-bar">
@@ -68,6 +171,7 @@
     </div>
     <div id="captureStatus"></div>
   </div>
+
   <div id="debug-overlay"></div>
 
   <model-viewer id="mv"
@@ -92,14 +196,17 @@
     const prefer = qs.get('prefer');
     const forceWebxr = qs.has('forceWebxr');
     const debugTrace = qs.has('debugTrace');
+    const debugUi = qs.has('debugUi'); // NEU: AR-UI erzwingen (ohne AR)
 
     const mv = document.getElementById('mv');
     const errBox = document.getElementById('err');
+
     const poster = document.getElementById('poster');
     const posterTitle = document.getElementById('posterTitle');
     const posterDesc  = document.getElementById('posterDesc');
     const posterImage = document.getElementById('posterImage');
     const startBtn    = document.getElementById('startAr');
+
     const arUi        = document.getElementById('ar-ui');
     const btnShutter  = document.getElementById('btn-shutter');
     const btnGallery  = document.getElementById('btn-gallery');
@@ -107,39 +214,42 @@
     const recTime     = document.getElementById('rec-time');
     const captureStatus = document.getElementById('captureStatus');
     const screenFlash = document.getElementById('screen-flash');
-    const debugOverlay = document.getElementById('debug-overlay');
 
+    const debugOverlay = document.getElementById('debug-overlay');
     if (debugTrace) debugOverlay.style.display = 'block';
 
     let audioEl = null;
     let audioCfg = null;
 
-    // Mode Auswahl
+    // Moduswahl
     if (forceWebxr) {
       mv.setAttribute('ar-modes','webxr');
+      console.warn('[viewer] forceWebxr=1 aktiv');
     } else if (prefer === 'native') {
       mv.setAttribute('ar-modes','scene-viewer webxr quick-look');
     } else {
       mv.setAttribute('ar-modes','webxr scene-viewer quick-look');
     }
 
-    function logDiag(...args){ console.log('[diag]', ...args); }
-    function showError(msg){ errBox.textContent=msg; errBox.style.display='block'; logDiag('ERROR', msg); }
-    function hideError(){ errBox.style.display='none'; }
-    function bust(u){ if(!DEV || !u) return u; return u+(u.includes('?')?'&':'?')+'v='+Date.now(); }
+    function showError(msg){ errBox.textContent = msg; errBox.style.display = 'block'; console.error('[viewer]', msg); }
+    function hideError(){ errBox.style.display = 'none'; }
+    function bust(u){ if (!DEV || !u) return u; const sep = u.includes('?')?'&':'?'; return u + sep + 'v=' + Date.now(); }
 
-    // Debug Info Builder
+    // Diagnose
     const diag = {
-      xrSupported: null,
+      xrSupported: !!navigator.xr,
       immersiveArSupported: null,
       arModes: mv.getAttribute('ar-modes'),
       sessionStarted: false,
       fallbackTimerTriggered: false,
       modeExplanation: '',
       audio: 'none',
-      videoSupported: null,
+      videoSupported: !!(HTMLCanvasElement.prototype.captureStream) && typeof MediaRecorder !== 'undefined',
       canvasStream: null
     };
+    window.__AREA_DIAG = diag;
+    window.__dumpAreaDiag = () => console.table(diag);
+
     function updateOverlay(){
       if (!debugTrace) return;
       debugOverlay.innerHTML =
@@ -154,294 +264,357 @@ canvasStream: ${diag.canvasStream}
 audio: ${diag.audio}
 modeNote: ${diag.modeExplanation}`;
     }
-
-    // WebXR Check
-    diag.xrSupported = !!navigator.xr;
-    if (navigator.xr && navigator.xr.isSessionSupported) {
+    if (navigator.xr?.isSessionSupported) {
       navigator.xr.isSessionSupported('immersive-ar')
         .then(s => { diag.immersiveArSupported = s; updateOverlay(); })
         .catch(_ => { diag.immersiveArSupported = false; updateOverlay(); });
     } else {
       diag.immersiveArSupported = false;
+      updateOverlay();
     }
-    updateOverlay();
 
-    // Video capability check (pre-AR)
-    diag.videoSupported = !!(HTMLCanvasElement.prototype.captureStream) && typeof MediaRecorder !== 'undefined';
-    updateOverlay();
+    // Szene/Config laden
+    const defaultBase = 'https://area-publish.area-webar.workers.dev';
+    const rawBase = (qs.get('base') || defaultBase);
+    let workerBase = rawBase.split('"')[0].split(',')[0].trim()
+      .replace(/\/scenes\/[^\/?#]+\/?$/,'')
+      .replace(/\/+$/,'');
+    if (!/^https?:\/\//i.test(workerBase)) workerBase = defaultBase;
 
-    // Scene Loading
-    const defaultBase='https://area-publish.area-webar.workers.dev';
-    const rawBase=(qs.get('base')||defaultBase);
-    let workerBase=rawBase.split('"')[0].split(',')[0].trim().replace(/\/scenes\/[^\/?#]+\/?$/,'').replace(/\/+$/,'');
-    if(!/^https?:\/\//i.test(workerBase))workerBase=defaultBase;
+    const sceneId      = (qs.get('scene') || qs.get('src') || '').trim();
+    const overrideGlb  = (qs.get('glb')  || '').trim();
+    const overrideUsdz = (qs.get('usdz') || '').trim();
+    const isHttp = (u)=> /^https?:\/\//i.test(u);
+    const isDataOrBlob = (u)=> u.startsWith('data:') || u.startsWith('blob:');
+    let SCENE_GLB=''; let SCENE_JSON='';
 
-    const sceneId=(qs.get('scene')||qs.get('src')||'').trim();
-    const overrideGlb=(qs.get('glb')||'').trim();
-    const overrideUsdz=(qs.get('usdz')||'').trim();
-    const isHttp=u=>/^https?:\/\//i.test(u);
-    const isData=u=>u.startsWith('data:')||u.startsWith('blob:');
-    let SCENE_GLB='',SCENE_JSON='';
-
-    if(overrideGlb)SCENE_GLB=overrideGlb;
-    if(sceneId){
-      if(isHttp(sceneId)){
-        if(sceneId.toLowerCase().match(/\.(glb|gltf)$/)){ if(!SCENE_GLB)SCENE_GLB=sceneId; }
-        else SCENE_JSON=sceneId;
-      }else{
-        const id=sceneId.replace(/\/+$/,'');
-        if(!SCENE_GLB)SCENE_GLB=`${workerBase}/scenes/${encodeURIComponent(id)}/scene.glb`;
-        SCENE_JSON=`${workerBase}/scenes/${encodeURIComponent(id)}/scene.json`;
+    if (overrideGlb) SCENE_GLB = overrideGlb;
+    if (sceneId){
+      if (isHttp(sceneId)){
+        if (sceneId.toLowerCase().match(/\.(glb|gltf)$/)){ if (!SCENE_GLB) SCENE_GLB = sceneId; }
+        else { SCENE_JSON = sceneId; }
+      } else {
+        const id = sceneId.replace(/\/+$/,'');
+        if (!SCENE_GLB) SCENE_GLB = `${workerBase}/scenes/${encodeURIComponent(id)}/scene.glb`;
+        SCENE_JSON = `${workerBase}/scenes/${encodeURIComponent(id)}/scene.json`;
       }
     }
 
-    const cfg={
-      glbUrl:SCENE_GLB||"https://modelviewer.dev/shared-assets/models/Astronaut.glb",
-      usdzUrl:null,
-      meta:{title:null,description:null},
-      welcome:{title:null,desc:null,posterFile:null}
+    const cfg = {
+      glbUrl: SCENE_GLB || "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
+      usdzUrl: null,
+      meta:{ title:null, description:null },
+      welcome:{ title:null, desc:null, posterFile:null }
     };
 
     async function headOk(url){
-      try{const r=await fetch(bust(url),{method:'HEAD',cache:'no-cache'});return r.ok;}catch{return false;}
+      try { const r = await fetch(bust(url), { method:'HEAD', cache:'no-cache' }); return r.ok; }
+      catch { return false; }
     }
     function resolveRel(u){
-      if(!u)return '';
-      if(/^https?:\/\//i.test(u)||u.startsWith('data:'))return u;
-      if(!sceneId)return u;
+      if (!u) return '';
+      if (/^https?:\/\//i.test(u) || u.startsWith('data:')) return u;
+      if (!sceneId) return u;
       return `${workerBase}/scenes/${encodeURIComponent(sceneId)}/${u}`;
     }
 
-    (async()=>{
-      try{
-        if(SCENE_JSON && !isData(SCENE_JSON)){
-          const r=await fetch(bust(SCENE_JSON),{cache:'no-cache'});
-          if(!r.ok)throw new Error('scene.json '+r.status);
-          const j=await r.json();
-          if(j.meta){cfg.meta.title=j.meta.title||null;cfg.meta.description=j.meta.description||null;}
-          if(j.model && j.model.url && !overrideGlb){cfg.glbUrl=resolveRel(j.model.url);SCENE_GLB=cfg.glbUrl;}
-          if(j.model && j.model.usdzUrl && !overrideUsdz){cfg.usdzUrl=resolveRel(j.model.usdzUrl);}
-          if(j.ui && j.ui.welcome){
-            cfg.welcome.title=j.ui.welcome.title||null;
-            cfg.welcome.desc=j.ui.welcome.desc||null;
-            cfg.welcome.posterFile=j.ui.welcome.poster||null;
+    (async () => {
+      try {
+        if (SCENE_JSON && !isDataOrBlob(SCENE_JSON)){
+          const r = await fetch(bust(SCENE_JSON), { cache:'no-cache' });
+          if (!r.ok) throw new Error('scene.json: ' + r.status + ' ' + r.statusText);
+          const j = await r.json();
+
+          if (j.meta){ cfg.meta.title = j.meta.title || null; cfg.meta.description = j.meta.description || null; }
+          if (j.model && j.model.url && !overrideGlb){ cfg.glbUrl = resolveRel(j.model.url); SCENE_GLB = cfg.glbUrl; }
+          if (j.model && j.model.usdzUrl && !overrideUsdz){ cfg.usdzUrl = resolveRel(j.model.usdzUrl); }
+          if (j.ui && j.ui.welcome){
+            cfg.welcome.title     = j.ui.welcome.title || null;
+            cfg.welcome.desc      = j.ui.welcome.desc || null;
+            cfg.welcome.posterFile= j.ui.welcome.poster || null;
           }
-          if(j.audio && j.audio.url){
-            audioCfg={
+          if (j.audio && j.audio.url){
+            audioCfg = {
               url: resolveRel(j.audio.url),
               loop: !!j.audio.loop,
-              delaySeconds: j.audio.delaySeconds||0,
-              volume: Math.min(1,Math.max(0,j.audio.volume??0.8))
+              delaySeconds: j.audio.delaySeconds || 0,
+              volume: Math.min(1, Math.max(0, j.audio.volume ?? 0.8))
             };
             diag.audio = `pending load (${audioCfg.url})`;
             updateOverlay();
           }
         }
-        posterTitle.textContent=cfg.meta.title||cfg.welcome.title||"ARea AR-Erlebnis";
-        posterDesc.textContent=cfg.meta.description||cfg.welcome.desc||"Tippe auf „AR starten“, richte dein Gerät auf eine ebene Fläche und platziere dann das 3D-Modell.";
 
-        if(cfg.welcome.posterFile && sceneId){
-          posterImage.src=bust(resolveRel(cfg.welcome.posterFile));
+        posterTitle.textContent = cfg.meta.title || cfg.welcome.title || "ARea AR-Erlebnis";
+        posterDesc.textContent  = cfg.meta.description || cfg.welcome.desc ||
+          "Tippe auf „AR starten“, richte dein Gerät auf eine ebene Fläche und platziere dann das 3D-Modell.";
+
+        if (cfg.welcome.posterFile && sceneId){
+          posterImage.src = bust(resolveRel(cfg.welcome.posterFile));
           posterImage.style.display='block';
         }
-        const finalGlb=SCENE_GLB||cfg.glbUrl;
-        if(finalGlb && !(await headOk(finalGlb)))showError('GLB nicht gefunden: '+finalGlb);
-        mv.src=bust(finalGlb);
-        if(cfg.usdzUrl)mv.setAttribute('ios-src',cfg.usdzUrl); else mv.removeAttribute('ios-src');
 
-        if(audioCfg){
-          audioEl=new Audio();
-          audioEl.src=bust(audioCfg.url);
-            audioEl.loop=audioCfg.loop;
-            audioEl.volume=audioCfg.volume;
-            audioEl.preload='auto';
-            audioEl.crossOrigin='anonymous';
-            audioEl.addEventListener('canplay',()=>{diag.audio='loaded';updateOverlay();});
-            audioEl.addEventListener('error',()=>{diag.audio='error';updateOverlay();});
+        const finalGlb = SCENE_GLB || cfg.glbUrl;
+        if (finalGlb && !(await headOk(finalGlb))) showError('GLB nicht gefunden: ' + finalGlb);
+        mv.src = bust(finalGlb);
+
+        if (cfg.usdzUrl) mv.setAttribute('ios-src', cfg.usdzUrl);
+        else mv.removeAttribute('ios-src');
+
+        if (audioCfg){
+          audioEl = new Audio();
+          audioEl.src = bust(audioCfg.url);
+          audioEl.loop = audioCfg.loop;
+          audioEl.volume = audioCfg.volume;
+          audioEl.preload = 'auto';
+          audioEl.crossOrigin = 'anonymous';
+          audioEl.addEventListener('canplay',()=>{ diag.audio='loaded'; updateOverlay(); });
+          audioEl.addEventListener('error',()=>{ diag.audio='error'; updateOverlay(); });
         }
         updateOverlay();
-      }catch(e){showError('Szene konnte nicht geladen werden: '+e.message);}
+
+      } catch(e) {
+        showError('Szene konnte nicht geladen werden: ' + e.message);
+        console.error(e);
+      }
     })();
 
-    mv.addEventListener('load',()=>{
-      const names=mv.availableAnimations||[];
-      if(names.length){
-        mv.animationName=names[0];
-        mv.play().catch(e=>console.warn('play failed',e));
+    // Sicherer Play-Aufruf (verhindert .catch auf undefined)
+    mv.addEventListener('load', () => {
+      const names = mv.availableAnimations || [];
+      if (names && names.length){
+        mv.animationName = names[0];
+        try {
+          const ret = mv.play && mv.play();
+          if (ret && typeof ret.catch === 'function') {
+            ret.catch(e => console.warn('play failed', e));
+          }
+        } catch (e) {
+          console.warn('play failed (sync)', e);
+        }
       }
     });
 
-    let arStatusFallbackTimer=null;
-
-    mv.addEventListener('ar-status',e=>{
-      if (arStatusFallbackTimer){ clearTimeout(arStatusFallbackTimer); arStatusFallbackTimer=null; }
-      if(e.detail.status==='session-started'){
-        diag.sessionStarted=true;
+    // AR-Status
+    let arStatusFallbackTimer = null;
+    mv.addEventListener('ar-status', e => {
+      if (arStatusFallbackTimer) { clearTimeout(arStatusFallbackTimer); arStatusFallbackTimer = null; }
+      if (e.detail.status === 'session-started'){
+        diag.sessionStarted = true;
         arUi.style.display='block';
-        if(audioEl){
-          const delayMs=Math.max(0,(audioCfg?.delaySeconds||0)*1000);
-          setTimeout(()=>audioEl.play().then(()=>{diag.audio='playing';updateOverlay();})
-            .catch(err=>{diag.audio='play blocked';updateOverlay();console.warn('audio play failed',err);} ),delayMs);
+
+        if (audioEl){
+          const delayMs = Math.max(0, (audioCfg?.delaySeconds || 0) * 1000);
+          setTimeout(()=> audioEl.play()
+            .then(()=>{ diag.audio='playing'; updateOverlay(); })
+            .catch(err=>{ diag.audio='play blocked'; updateOverlay(); console.warn('audio play failed', err); }), delayMs);
         }
-      }else if(e.detail.status==='not-presenting'){
-        diag.sessionStarted=false;
+      } else if (e.detail.status === 'not-presenting'){
+        diag.sessionStarted = false;
         arUi.style.display='none';
         poster.style.display='flex';
         stopVideoRecording(false);
-        if(audioEl){try{audioEl.pause();audioEl.currentTime=0;}catch{}}
+        if (audioEl){ try{ audioEl.pause(); audioEl.currentTime=0; }catch{} }
       }
       updateOverlay();
     });
 
-    startBtn.addEventListener('click',async ev=>{
-      ev.preventDefault();ev.stopPropagation();hideError();
-      diag.modeExplanation='';
-      if(!mv.hasAttribute('ar')){showError('AR nicht aktiviert.');return;}
-      if(typeof mv.canActivateAR==='function' && !mv.canActivateAR()){
-        diag.modeExplanation='mv.canActivateAR() === false → vermutlich nativer Fallback oder kein WebXR';
-        updateOverlay();
-      }
-      startBtn.disabled=true;
-      try{
+    // Start-Button
+    startBtn.addEventListener('click', async ev => {
+      ev.preventDefault(); ev.stopPropagation(); hideError();
+      startBtn.disabled = true;
+      try {
         const arFn = mv.activateAR || mv.enterAR;
-        if(typeof arFn!=='function') throw new Error('Kein activateAR/enterAR verfügbar');
+        if (typeof arFn !== 'function') throw new Error('AR-Funktion nicht verfügbar.');
         await arFn.call(mv);
         poster.style.display='none';
 
-        // Fallback falls kein session-started nach 1.3s
-        arStatusFallbackTimer=setTimeout(()=>{
-          if(!diag.sessionStarted){
-            diag.fallbackTimerTriggered=true;
-            diag.modeExplanation='Kein session-started → vermutlich nativer Scene Viewer / Quick Look oder blockierter WebXR';
-            // ERZWUNGENE UI zum Debug (nur wenn forceWebxr gesetzt)
-            if(forceWebxr){
-              arUi.style.display='block';
-            }
+        // Fallback: Falls ar-status nicht kommt, UI nach 1.5s trotzdem zeigen (nur als Debughilfe)
+        arStatusFallbackTimer = setTimeout(() => {
+          if (arUi.style.display === 'none'){
+            diag.fallbackTimerTriggered = true;
+            diag.modeExplanation = 'Kein session-started → evtl. nativer Fallback';
             updateOverlay();
           }
-        },1300);
+        }, 1500);
 
-        // Audio Start auch hier als Sicherheitsnetz
-        if(audioEl && !diag.sessionStarted){
-          const delayMs=Math.max(0,(audioCfg?.delaySeconds||0)*1000);
-          setTimeout(()=>audioEl.play()
-            .then(()=>{diag.audio='playing (fallback)';updateOverlay();})
-            .catch(()=>{diag.audio='play blocked (fallback)';updateOverlay();}), delayMs);
+        if (audioEl && !diag.sessionStarted){
+          const delayMs = Math.max(0, (audioCfg?.delaySeconds || 0) * 1000);
+          setTimeout(()=> audioEl.play().catch(()=>{}), delayMs);
         }
-      }catch(e){
-        showError('AR konnte nicht gestartet werden: '+e.message);
+      } catch(e){
+        showError('AR konnte nicht gestartet werden: '+ e.message);
         poster.style.display='flex';
-      }finally{
-        startBtn.disabled=false;
+      } finally {
+        startBtn.disabled = false;
         updateOverlay();
       }
     });
 
-    // Galerie Button
-    btnGallery.addEventListener('click',()=>{
-      if(!lastCaptureUrl){flashStatus('Noch keine Aufnahme');return;}
-      window.open(lastCaptureUrl,'_blank');
+    // Debug: AR-UI ohne AR-Session erzwingen
+    if (debugUi){
+      poster.style.display='none';
+      arUi.style.display='block';
+      console.warn('[debugUi] AR-UI erzwungen ohne AR-Session');
+    }
+
+    // Galerie öffnen (letzte Aufnahme)
+    btnGallery.addEventListener('click', () => {
+      if (!lastCaptureUrl){ flashStatus('Noch keine Aufnahme'); return; }
+      window.open(lastCaptureUrl, '_blank');
     });
 
-    const ENABLE_AUTO_SHARE=false;
-    async function tryShareFile(filename,mime,blob){
-      if(!navigator.canShare||!navigator.canShare({files:[new File([blob],filename,{type:mime})]}))return false;
-      try{await navigator.share({files:[new File([blob],filename,{type:mime})],title:'ARea Capture'});return true;}catch{return false;}
-    }
-
-    function getCanvas(){return mv.shadowRoot?.querySelector('canvas') || document.querySelector('canvas');}
-
-    let lastCaptureUrl=null;
-    function downloadBlob(url,name){
-      const a=document.createElement('a');a.download=name;a.href=url;
-      document.body.appendChild(a);a.click();document.body.removeChild(a);
-    }
-    function updateGalleryThumb(url){
-      btnGallery.innerHTML='';
-      const img=document.createElement('img');img.src=url;btnGallery.appendChild(img);
+    // Capture Utilities
+    function getCanvas(){
+      return mv.shadowRoot?.querySelector('canvas') || document.querySelector('canvas');
     }
     function flashStatus(msg){
-      captureStatus.textContent=msg;captureStatus.style.display='block';
-      clearTimeout(captureStatus._t);captureStatus._t=setTimeout(()=>captureStatus.style.display='none',1800);
+      captureStatus.textContent = msg;
+      captureStatus.style.display='block';
+      clearTimeout(captureStatus._t);
+      captureStatus._t = setTimeout(()=> captureStatus.style.display='none',1800);
     }
     function flashScreen(){
-      screenFlash.classList.remove('flash-active');void screenFlash.offsetWidth;screenFlash.classList.add('flash-active');
+      screenFlash.classList.remove('flash-active');
+      void screenFlash.offsetWidth;
+      screenFlash.classList.add('flash-active');
     }
     function blinkShutter(){
-      btnShutter.classList.remove('snap');void btnShutter.offsetWidth;btnShutter.classList.add('snap');
+      btnShutter.classList.remove('snap');
+      void btnShutter.offsetWidth;
+      btnShutter.classList.add('snap');
     }
-    function takeScreenshot(){
-      const canvas=getCanvas();
-      if(!canvas){showError('Kein Canvas für Screenshot.');return;}
-      canvas.toBlob(async blob=>{
-        if(!blob)return;
-        blinkShutter();flashScreen();navigator.vibrate?.(12);
-        const url=URL.createObjectURL(blob);
-        lastCaptureUrl=url;updateGalleryThumb(url);
-        const name='area-ar-'+Date.now().toString(36)+'.png';
-        if(!(ENABLE_AUTO_SHARE && await tryShareFile(name,'image/png',blob))){downloadBlob(url,name);}
-        flashStatus('Screenshot gespeichert');
-      },'image/png');
+    function downloadBlob(url, name){
+      const a = document.createElement('a');
+      a.download = name; a.href = url;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
     }
 
-    let recording=false,mediaRecorder=null,recordedChunks=[];
-    let longPressT=null,recordingStartTs=0,recTimerInt=null;
-    function startVideoRecording(){
-      if(recording)return;
-      const canvas=getCanvas();
-      if(!canvas||!canvas.captureStream){flashStatus('Video nicht unterstützt');return;}
-      diag.canvasStream='ok';updateOverlay();
-      let stream;try{stream=canvas.captureStream(30);}catch{flashStatus('Stream Fehler');return;}
-      try{mediaRecorder=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9'});}catch(e){
-        try{mediaRecorder=new MediaRecorder(stream);}catch(err){flashStatus('MediaRecorder fehlt');return;}
+    // Optional: Auto-Share deaktiviert (kann aktiviert werden)
+    const ENABLE_AUTO_SHARE = false;
+    async function tryShareFile(filename, mime, blob){
+      if (!navigator.canShare || !navigator.canShare({ files: [new File([blob], filename, { type: mime })] })) return false;
+      try {
+        await navigator.share({ files: [new File([blob], filename, { type: mime })], title: 'ARea Capture' });
+        return true;
+      } catch { return false; }
+    }
+
+    // Screenshot
+    let lastCaptureUrl = null;
+    function updateGalleryThumb(url){
+      btnGallery.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = url;
+      btnGallery.appendChild(img);
+    }
+    function takeScreenshot(){
+      const canvas = getCanvas();
+      if (!canvas){ showError('Kein Canvas für Screenshot.'); return; }
+      canvas.toBlob(async blob => {
+        if (!blob) return;
+        blinkShutter();
+        flashScreen();
+        navigator.vibrate?.(12);
+
+        const url = URL.createObjectURL(blob);
+        lastCaptureUrl = url;
+        updateGalleryThumb(url);
+
+        const name = 'area-ar-' + Date.now().toString(36) + '.png';
+        if (!(ENABLE_AUTO_SHARE && await tryShareFile(name, 'image/png', blob))){
+          downloadBlob(url, name);
+        }
+        flashStatus('Screenshot gespeichert');
+      }, 'image/png');
+    }
+
+    // Video
+    let recording=false, mediaRecorder=null, recordedChunks=[];
+    let longPressT=null, recordingStartTs=0, recTimerInt=null;
+
+    function showRecTimer(on){
+      if (on){
+        recordingStartTs = Date.now();
+        recInfo.style.display='flex';
+        recTimerInt = setInterval(()=>{
+          const s = Math.floor((Date.now() - recordingStartTs)/1000);
+          const mm = String(Math.floor(s/60)).padStart(2,'0');
+          const ss = String(s%60).padStart(2,'0');
+          recTime.textContent = `${mm}:${ss}`;
+        }, 250);
+      } else {
+        recInfo.style.display='none';
+        clearInterval(recTimerInt); recTimerInt=null;
+        recTime.textContent = '00:00';
       }
-      recordedChunks=[];
-      mediaRecorder.ondataavailable=ev=>{if(ev.data&&ev.data.size>0)recordedChunks.push(ev.data);};
-      mediaRecorder.onstop=async()=>{
-        const blob=new Blob(recordedChunks,{type:recordedChunks[0]?.type||'video/webm'});
-        const url=URL.createObjectURL(blob);lastCaptureUrl=url;btnGallery.innerHTML='🎬';
-        const name='area-ar-video-'+Date.now().toString(36)+'.webm';
-        if(!(ENABLE_AUTO_SHARE && await tryShareFile(name,blob.type||'video/webm',blob))){downloadBlob(url,name);}
-        flashStatus('Video gespeichert');navigator.vibrate?.(10);
+    }
+    function startVideoRecording(){
+      if (recording) return;
+      const canvas = getCanvas();
+      if (!canvas || !canvas.captureStream){ flashStatus('Video nicht unterstützt'); return; }
+      diag.canvasStream='ok'; updateOverlay();
+
+      let stream;
+      try { stream = canvas.captureStream(30); }
+      catch(e){ flashStatus('Stream Fehler'); return; }
+
+      try {
+        mediaRecorder = new MediaRecorder(stream, { mimeType:'video/webm;codecs=vp9' });
+      } catch(e){
+        try { mediaRecorder = new MediaRecorder(stream); }
+        catch(err){ flashStatus('MediaRecorder fehlt'); return; }
+      }
+
+      recordedChunks = [];
+      mediaRecorder.ondataavailable = ev => { if (ev.data && ev.data.size > 0) recordedChunks.push(ev.data); };
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(recordedChunks, { type: recordedChunks[0]?.type || 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        lastCaptureUrl = url;
+        btnGallery.innerHTML = '🎬';
+
+        const name = 'area-ar-video-' + Date.now().toString(36) + '.webm';
+        if (!(ENABLE_AUTO_SHARE && await tryShareFile(name, blob.type || 'video/webm', blob))){
+          downloadBlob(url, name);
+        }
+        flashStatus('Video gespeichert');
+        navigator.vibrate?.(10);
       };
       mediaRecorder.start();
-      recording=true;btnShutter.classList.add('recording');showRecTimer(true);navigator.vibrate?.(15);
+      recording = true;
+      btnShutter.classList.add('recording');
+      showRecTimer(true);
+      navigator.vibrate?.(15);
     }
     function stopVideoRecording(showMsg=true){
-      if(!recording)return;
-      try{mediaRecorder.stop();}catch{}
-      recording=false;btnShutter.classList.remove('recording');showRecTimer(false);
-      if(showMsg)flashStatus('Videoaufnahme beendet');
+      if (!recording) return;
+      try { mediaRecorder.stop(); } catch(_){}
+      recording=false;
+      btnShutter.classList.remove('recording');
+      showRecTimer(false);
+      if (showMsg) flashStatus('Videoaufnahme beendet');
     }
-    function showRecTimer(on){
-      if(on){
-        recordingStartTs=Date.now();recInfo.style.display='flex';
-        recTimerInt=setInterval(()=>{
-          const s=Math.floor((Date.now()-recordingStartTs)/1000);
-          const mm=String(Math.floor(s/60)).padStart(2,'0');
-          const ss=String(s%60).padStart(2,'0');
-          recTime.textContent=`${mm}:${ss}`;
-        },250);
-      }else{
-        recInfo.style.display='none';clearInterval(recTimerInt);recTimerInt=null;recTime.textContent='00:00';
-      }
-    }
-    const LONG_PRESS_MS=300;
-    btnShutter.addEventListener('pointerdown',ev=>{
+
+    // Shutter: Tap = Foto, Long-press = Video
+    const LONG_PRESS_MS = 300;
+    btnShutter.addEventListener('pointerdown', (ev)=>{
       ev.preventDefault();
-      if(recording)return;
-      longPressT=setTimeout(()=>startVideoRecording(),LONG_PRESS_MS);
+      if (recording) return;
+      longPressT = setTimeout(()=> startVideoRecording(), LONG_PRESS_MS);
     });
-    function cancelLongPress(){if(longPressT){clearTimeout(longPressT);longPressT=null;}}
-    btnShutter.addEventListener('pointerup',ev=>{
+    function cancelLongPressTimer(){
+      if (longPressT) { clearTimeout(longPressT); longPressT = null; }
+    }
+    btnShutter.addEventListener('pointerup', (ev)=>{
       ev.preventDefault();
-      if(recording){
+      if (recording){
         stopVideoRecording(true);
-      }else{
-        if(longPressT){cancelLongPress();takeScreenshot();}
+      } else {
+        if (longPressT){ cancelLongPressTimer(); takeScreenshot(); }
       }
     });
-    btnShutter.addEventListener('pointerleave',()=>{if(!recording)cancelLongPress();});
+    btnShutter.addEventListener('pointerleave', ()=>{ if (!recording) cancelLongPressTimer(); });
 
   })();
   </script>
