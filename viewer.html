@@ -85,6 +85,8 @@
     src="https://modelviewer.dev/shared-assets/models/Astronaut.glb"
     ar
     ar-modes="scene-viewer quick-look webxr"
+    ar-placement="floor"
+    bounds="tight"
     camera-controls
     environment-image="https://modelviewer.dev/shared-assets/environments/neutral.hdr"
     exposure="1"
@@ -109,14 +111,18 @@
 
   <script type="module">
   (() => {
-    const qs = new URLSearchParams(location.search);
+    const rawQuery = location.search;
+    const qs = new URLSearchParams(rawQuery);
+    // Falls prefer versehentlich an base hängt (…base=URL?prefer=web), trotzdem erkennen:
+    if (!qs.get('prefer') && rawQuery.includes('prefer=web')) {
+      qs.set('prefer','web');
+    }
+
     const DEV = qs.has('dev');
-    const prefer = qs.get('prefer'); // 'native' | 'web'
+    const prefer = qs.get('prefer'); // 'web' → WebXR zuerst
     const forceWebxr = qs.has('forceWebxr');
     const debugTrace = qs.has('debugTrace');
     const debugUi = qs.has('debugUi');
-    const PREFER_TAB_CAPTURE = true;
-    const CAN_SCREEN_CAPTURE = !!navigator.mediaDevices?.getDisplayMedia;
 
     const mv = document.getElementById('mv');
     const errBox = document.getElementById('err');
@@ -295,7 +301,7 @@ modeNote: ${diag.modeExplanation}`;
       }
     })();
 
-    // Sicherer Play-Aufruf
+    // Sicherer Play-Aufruf (kein .catch auf undefined)
     mv.addEventListener('load', () => {
       const names = mv.availableAnimations || [];
       if (names && names.length){
@@ -318,19 +324,14 @@ modeNote: ${diag.modeExplanation}`;
       if (e.detail.status === 'session-started'){
         diag.sessionStarted = true;
         arUi.style.display='block';
-
         if (audioEl){
           const delayMs = Math.max(0, (audioCfg?.delaySeconds || 0) * 1000);
-          setTimeout(()=> audioEl.play()
-            .then(()=>{ diag.audio='playing'; updateOverlay(); })
-            .catch(err=>{ diag.audio='play blocked'; updateOverlay(); console.warn('audio play failed', err); }), delayMs);
+          setTimeout(()=> audioEl.play().catch(()=>{}), delayMs);
         }
       } else if (e.detail.status === 'not-presenting'){
         diag.sessionStarted = false;
         arUi.style.display='none';
         poster.style.display='flex';
-        stopVideoRecording(false);
-        if (audioEl){ try{ audioEl.pause(); audioEl.currentTime=0; }catch{} }
       }
       updateOverlay();
     });
@@ -367,14 +368,14 @@ modeNote: ${diag.modeExplanation}`;
       }
     });
 
-    // Debug-UI ohne AR-Session
+    // Debug-UI (Optional)
     if (debugUi){
       poster.style.display='none';
       arUi.style.display='block';
       console.warn('[debugUi] AR-UI erzwungen ohne AR-Session');
     }
 
-    // Galerie öffnen / Teilen
+    // Galerie öffnen / Teilen (keine System-Galerie aus dem Web möglich)
     let lastCaptureUrl = null;
     let lastCaptureBlob = null;
     let lastCaptureName = null;
@@ -417,50 +418,6 @@ modeNote: ${diag.modeExplanation}`;
       a.download = name; a.href = url;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
     }
-    function canvasToBlob(canvas, type='image/png', quality){
-      return new Promise(res => canvas.toBlob(b => res(b), type, quality));
-    }
-    async function takeScreenGrabImage(){
-      if (!CAN_SCREEN_CAPTURE) return null;
-      try{
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: { preferCurrentTab: true, frameRate: 30 },
-          audio: false
-        });
-        const video = document.createElement('video');
-        video.srcObject = stream;
-        await video.play().catch(()=>{});
-        await new Promise(r => setTimeout(r, 120));
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth || window.innerWidth;
-        canvas.height = video.videoHeight || window.innerHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        stream.getTracks().forEach(t=>t.stop());
-        return await canvasToBlob(canvas, 'image/png');
-      } catch(e){
-        console.warn('Screen grab abgebrochen/fehlgeschlagen', e);
-        return null;
-      }
-    }
-
-    const ENABLE_AUTO_SHARE = false;
-    async function tryShareFile(filename, mime, blob){
-      try {
-        const f = new File([blob], filename, { type: mime });
-        if (!navigator.canShare || !navigator.canShare({ files: [f] })) return false;
-        await navigator.share({ files: [f], title: 'ARea Capture' });
-        return true;
-      } catch {
-        return false;
-      }
-    }
-    function updateGalleryThumb(url){
-      btnGallery.innerHTML = '';
-      const img = document.createElement('img');
-      img.src = url;
-      btnGallery.appendChild(img);
-    }
 
     // Screenshot (nur wenn WebXR-Session aktiv)
     async function takeScreenshot(){
@@ -468,17 +425,11 @@ modeNote: ${diag.modeExplanation}`;
         flashStatus('AR nicht aktiv');
         return;
       }
-      blinkShutter(); flashScreen(); navigator.vibrate?.(12);
+      blinkShutter(); flashScreen();
 
-      let blob = null;
-      if (PREFER_TAB_CAPTURE && CAN_SCREEN_CAPTURE){
-        blob = await takeScreenGrabImage();
-      }
-      if (!blob){
-        const canvas = getCanvas();
-        if (!canvas){ showError('Kein Canvas für Screenshot.'); return; }
-        blob = await canvasToBlob(canvas, 'image/png');
-      }
+      const canvas = getCanvas();
+      if (!canvas){ flashStatus('Kein Canvas'); return; }
+      const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
       if (!blob){ flashStatus('Screenshot fehlgeschlagen'); return; }
 
       const url = URL.createObjectURL(blob);
@@ -486,36 +437,21 @@ modeNote: ${diag.modeExplanation}`;
       lastCaptureBlob = blob;
       lastCaptureMime = 'image/png';
       lastCaptureName = 'area-ar-' + Date.now().toString(36) + '.png';
-      updateGalleryThumb(url);
 
-      if (!(ENABLE_AUTO_SHARE && await tryShareFile(lastCaptureName, lastCaptureMime, blob))){
-        downloadBlob(url, lastCaptureName);
-      }
+      btnGallery.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = url;
+      btnGallery.appendChild(img);
+
+      downloadBlob(url, lastCaptureName);
       flashStatus('Screenshot gespeichert');
     }
 
-    // Video
-    let recording=false, mediaRecorder=null, recordedChunks=[];
-    let longPressT=null, recordingStartTs=0, recTimerInt=null;
+    // Video (nur Canvas-Stream; MP4 bevorzugen)
+    let recording=false, mediaRecorder=null, recordedChunks=[], longPressT=null;
 
-    function showRecTimer(on){
-      if (on){
-        recordingStartTs = Date.now();
-        recInfo.style.display='flex';
-        recTimerInt = setInterval(()=>{
-          const s = Math.floor((Date.now() - recordingStartTs)/1000);
-          const mm = String(Math.floor(s/60)).padStart(2,'0');
-          const ss = String(s%60).padStart(2,'0');
-          recTime.textContent = `${mm}:${ss}`;
-        }, 250);
-      } else {
-        recInfo.style.display='none';
-        clearInterval(recTimerInt); recTimerInt=null;
-        recTime.textContent = '00:00';
-      }
-    }
     function pickBestMime(){
-      const tryTypes = [
+      const order = [
         'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
         'video/mp4;codecs="h264,mp4a.40.2"',
         'video/mp4',
@@ -523,52 +459,29 @@ modeNote: ${diag.modeExplanation}`;
         'video/webm;codecs=vp8',
         'video/webm'
       ];
-      for (const t of tryTypes){
-        try {
-          if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) return t;
-        } catch {}
+      for (const t of order){
+        try { if (MediaRecorder.isTypeSupported(t)) return t; } catch {}
       }
       return '';
     }
-    async function getScreenStreamForVideo(){
-      if (!CAN_SCREEN_CAPTURE) return null;
-      try {
-        return await navigator.mediaDevices.getDisplayMedia({
-          video: { preferCurrentTab: true, frameRate: 30 },
-          audio: false
-        });
-      } catch {
-        return null;
-      }
-    }
-    async function startVideoRecording(){
+
+    function startVideoRecording(){
       if (recording) return;
-      if (!diag.sessionStarted){
-        flashStatus('AR nicht aktiv'); return;
-      }
-
-      let stream = await getScreenStreamForVideo();
-      let usingScreen = !!stream;
-
-      if (!stream){
-        const canvas = getCanvas();
-        if (!canvas || !canvas.captureStream){ flashStatus('Video nicht unterstützt'); return; }
-        try { stream = canvas.captureStream(30); }
-        catch(e){ flashStatus('Stream Fehler'); return; }
-      }
+      if (!diag.sessionStarted){ flashStatus('AR nicht aktiv'); return; }
+      const canvas = getCanvas();
+      if (!canvas || !canvas.captureStream){ flashStatus('Video nicht unterstützt'); return; }
+      const stream = canvas.captureStream(30);
 
       const mimeType = pickBestMime();
-      try {
-        mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-      } catch(err){
+      try { mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream); }
+      catch(e){
         try { mediaRecorder = new MediaRecorder(stream); }
-        catch(_){ flashStatus('MediaRecorder fehlt'); try{ stream.getTracks().forEach(t=>t.stop()); }catch{} return; }
+        catch(_){ flashStatus('MediaRecorder fehlt'); return; }
       }
 
       recordedChunks = [];
       mediaRecorder.ondataavailable = ev => { if (ev.data && ev.data.size > 0) recordedChunks.push(ev.data); };
       mediaRecorder.onstop = async () => {
-        try{ if (usingScreen) stream.getTracks().forEach(t=>t.stop()); }catch{}
         if (!recordedChunks.length){ flashStatus('Keine Videodaten'); return; }
         const type = recordedChunks[0]?.type || (mimeType || 'video/webm');
         const blob = new Blob(recordedChunks, { type });
@@ -585,25 +498,19 @@ modeNote: ${diag.modeExplanation}`;
 
         btnGallery.innerHTML = '🎬';
 
-        if (!(ENABLE_AUTO_SHARE && await tryShareFile(lastCaptureName, lastCaptureMime, blob))){
-          downloadBlob(url, lastCaptureName);
-        }
+        downloadBlob(url, lastCaptureName);
         flashStatus('Video gespeichert');
-        navigator.vibrate?.(10);
       };
 
       mediaRecorder.start();
       recording = true;
       btnShutter.classList.add('recording');
-      showRecTimer(true);
-      navigator.vibrate?.(15);
     }
     function stopVideoRecording(showMsg=true){
       if (!recording) return;
       try { mediaRecorder.stop(); } catch(_){}
       recording=false;
       btnShutter.classList.remove('recording');
-      showRecTimer(false);
       if (showMsg) flashStatus('Videoaufnahme beendet');
     }
 
@@ -612,18 +519,17 @@ modeNote: ${diag.modeExplanation}`;
     btnShutter.addEventListener('pointerdown', (ev)=>{
       ev.preventDefault();
       if (recording) return;
-      if (!diag.sessionStarted){ flashStatus('AR nicht aktiv'); return; }
       longPressT = setTimeout(()=> startVideoRecording(), LONG_PRESS_MS);
     });
     function cancelLongPressTimer(){
       if (longPressT) { clearTimeout(longPressT); longPressT = null; }
     }
-    btnShutter.addEventListener('pointerup', async (ev)=>{
+    btnShutter.addEventListener('pointerup', (ev)=>{
       ev.preventDefault();
       if (recording){
         stopVideoRecording(true);
       } else {
-        if (longPressT){ cancelLongPressTimer(); await takeScreenshot(); }
+        if (longPressT){ cancelLongPressTimer(); takeScreenshot(); }
       }
     });
     btnShutter.addEventListener('pointerleave', ()=>{ if (!recording) cancelLongPressTimer(); });
