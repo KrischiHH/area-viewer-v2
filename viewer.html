@@ -35,7 +35,7 @@
     /* Fehler */
     #err{position:fixed;left:12px;top:12px;z-index:10000;background:#b00020;color:#fff;padding:8px 10px;border-radius:8px;display:none;font:12px/1.35 monospace;max-width:min(92vw,680px);white-space:pre-wrap}
 
-    /* AR UI – Kamera-Toolbar */
+    /* AR UI – Kamera-Toolbar (nur WebXR) */
     #ar-ui{
       position:fixed;inset:0;z-index:9000;display:none;pointer-events:none;font-family:inherit;
     }
@@ -80,11 +80,11 @@
   <!-- Screen-Flash Overlay (bleibt global) -->
   <div id="screen-flash"></div>
 
-  <!-- Wichtig: Kamera-UI nur in WebXR anzeigen -->
+  <!-- Kamera-UI nur im WebXR-Modus -->
   <model-viewer id="mv"
     src="https://modelviewer.dev/shared-assets/models/Astronaut.glb"
     ar
-    ar-modes="webxr scene-viewer quick-look"
+    ar-modes="scene-viewer quick-look webxr"
     camera-controls
     environment-image="https://modelviewer.dev/shared-assets/environments/neutral.hdr"
     exposure="1"
@@ -111,11 +111,11 @@
   (() => {
     const qs = new URLSearchParams(location.search);
     const DEV = qs.has('dev');
-    const prefer = qs.get('prefer');
+    const prefer = qs.get('prefer'); // 'native' | 'web'
     const forceWebxr = qs.has('forceWebxr');
     const debugTrace = qs.has('debugTrace');
     const debugUi = qs.has('debugUi');
-    const PREFER_TAB_CAPTURE = true; // wenn möglich: komplette Bildschirmaufnahme für echtes AR-Foto
+    const PREFER_TAB_CAPTURE = true;
     const CAN_SCREEN_CAPTURE = !!navigator.mediaDevices?.getDisplayMedia;
 
     const mv = document.getElementById('mv');
@@ -141,13 +141,13 @@
     let audioEl = null;
     let audioCfg = null;
 
-    // AR-Modus
+    // AR-Modus-Reihenfolge
     if (forceWebxr) {
       mv.setAttribute('ar-modes','webxr');
-    } else if (prefer === 'native') {
-      mv.setAttribute('ar-modes','scene-viewer webxr quick-look');
-    } else {
+    } else if (prefer === 'web') {
       mv.setAttribute('ar-modes','webxr scene-viewer quick-look');
+    } else {
+      mv.setAttribute('ar-modes','scene-viewer quick-look webxr'); // Standard: nativ zuerst
     }
 
     function showError(msg){ errBox.textContent = msg; errBox.style.display = 'block'; console.error('[viewer]', msg); }
@@ -345,7 +345,7 @@ modeNote: ${diag.modeExplanation}`;
         await arFn.call(mv);
         poster.style.display='none';
 
-        // Fallback: Falls ar-status nicht kommt
+        // Fallback: Falls ar-status nicht kommt (z. B. nativer Handoff)
         arStatusFallbackTimer = setTimeout(() => {
           if (arUi.style.display === 'none'){
             diag.fallbackTimerTriggered = true;
@@ -382,7 +382,6 @@ modeNote: ${diag.modeExplanation}`;
 
     btnGallery.addEventListener('click', async () => {
       if (!lastCaptureBlob){ flashStatus('Noch keine Aufnahme'); return; }
-      // Versuche Share Sheet
       const canShareFile = !!navigator.share && !!navigator.canShare &&
         navigator.canShare({ files: [new File([lastCaptureBlob], lastCaptureName || 'capture', { type: lastCaptureMime || 'application/octet-stream' })] });
       if (canShareFile){
@@ -392,11 +391,8 @@ modeNote: ${diag.modeExplanation}`;
             title: 'ARea Aufnahme'
           });
           return;
-        } catch(e) {
-          // Abgebrochen → fallback auf Öffnen
-        }
+        } catch(e) { /* abgebrochen → fallback */ }
       }
-      // Fallback: in neuem Tab öffnen
       window.open(lastCaptureUrl, '_blank');
     });
 
@@ -434,7 +430,6 @@ modeNote: ${diag.modeExplanation}`;
         const video = document.createElement('video');
         video.srcObject = stream;
         await video.play().catch(()=>{});
-        // Kurze Verzögerung, um einen Frame zu haben
         await new Promise(r => setTimeout(r, 120));
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth || window.innerWidth;
@@ -467,7 +462,7 @@ modeNote: ${diag.modeExplanation}`;
       btnGallery.appendChild(img);
     }
 
-    // Screenshot (nur wenn AR-Session aktiv)
+    // Screenshot (nur wenn WebXR-Session aktiv)
     async function takeScreenshot(){
       if (!diag.sessionStarted){
         flashStatus('AR nicht aktiv');
@@ -475,12 +470,10 @@ modeNote: ${diag.modeExplanation}`;
       }
       blinkShutter(); flashScreen(); navigator.vibrate?.(12);
 
-      // Versuche komplette Ansicht zu erfassen, falls erlaubt (inkl. Kamera)
       let blob = null;
       if (PREFER_TAB_CAPTURE && CAN_SCREEN_CAPTURE){
         blob = await takeScreenGrabImage();
       }
-      // Fallback: nur Canvas (3D Layer)
       if (!blob){
         const canvas = getCanvas();
         if (!canvas){ showError('Kein Canvas für Screenshot.'); return; }
@@ -537,29 +530,45 @@ modeNote: ${diag.modeExplanation}`;
       }
       return '';
     }
-    function startVideoRecording(){
+    async function getScreenStreamForVideo(){
+      if (!CAN_SCREEN_CAPTURE) return null;
+      try {
+        return await navigator.mediaDevices.getDisplayMedia({
+          video: { preferCurrentTab: true, frameRate: 30 },
+          audio: false
+        });
+      } catch {
+        return null;
+      }
+    }
+    async function startVideoRecording(){
       if (recording) return;
       if (!diag.sessionStarted){
         flashStatus('AR nicht aktiv'); return;
       }
-      const canvas = getCanvas();
-      if (!canvas || !canvas.captureStream){ flashStatus('Video nicht unterstützt'); return; }
-      diag.canvasStream='ok'; updateOverlay();
-      let stream;
-      try { stream = canvas.captureStream(30); }
-      catch(e){ flashStatus('Stream Fehler'); return; }
+
+      let stream = await getScreenStreamForVideo();
+      let usingScreen = !!stream;
+
+      if (!stream){
+        const canvas = getCanvas();
+        if (!canvas || !canvas.captureStream){ flashStatus('Video nicht unterstützt'); return; }
+        try { stream = canvas.captureStream(30); }
+        catch(e){ flashStatus('Stream Fehler'); return; }
+      }
 
       const mimeType = pickBestMime();
       try {
         mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       } catch(err){
         try { mediaRecorder = new MediaRecorder(stream); }
-        catch(_){ flashStatus('MediaRecorder fehlt'); return; }
+        catch(_){ flashStatus('MediaRecorder fehlt'); try{ stream.getTracks().forEach(t=>t.stop()); }catch{} return; }
       }
 
       recordedChunks = [];
       mediaRecorder.ondataavailable = ev => { if (ev.data && ev.data.size > 0) recordedChunks.push(ev.data); };
       mediaRecorder.onstop = async () => {
+        try{ if (usingScreen) stream.getTracks().forEach(t=>t.stop()); }catch{}
         if (!recordedChunks.length){ flashStatus('Keine Videodaten'); return; }
         const type = recordedChunks[0]?.type || (mimeType || 'video/webm');
         const blob = new Blob(recordedChunks, { type });
@@ -570,12 +579,10 @@ modeNote: ${diag.modeExplanation}`;
         const ext = type.includes('mp4') ? '.mp4' : '.webm';
         lastCaptureName = 'area-ar-video-' + Date.now().toString(36) + ext;
 
-        // Für iOS/Safari: mp4 wird bevorzugt – falls nicht möglich, Hinweis
         if (ext === '.webm' && /iPad|iPhone|iPod/.test(navigator.userAgent)){
           flashStatus('Hinweis: WEBM wird auf iOS evtl. nicht unterstützt');
         }
 
-        // Thumb auf Film-Icon setzen
         btnGallery.innerHTML = '🎬';
 
         if (!(ENABLE_AUTO_SHARE && await tryShareFile(lastCaptureName, lastCaptureMime, blob))){
@@ -584,6 +591,7 @@ modeNote: ${diag.modeExplanation}`;
         flashStatus('Video gespeichert');
         navigator.vibrate?.(10);
       };
+
       mediaRecorder.start();
       recording = true;
       btnShutter.classList.add('recording');
