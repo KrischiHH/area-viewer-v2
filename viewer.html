@@ -11,7 +11,7 @@
   <style>
     :root {
       color-scheme: dark light;
-      --model-vertical-offset: 0px; /* nur für 3D-Modus */
+      --model-vertical-offset: 0px;
     }
     *, *::before, *::after { box-sizing: border-box; }
     html, body {
@@ -22,7 +22,6 @@
       touch-action: manipulation;
     }
 
-    /* Poster Overlay vor AR-Start */
     #poster {
       position: fixed; inset: 0;
       display: flex; align-items: center; justify-content: center;
@@ -31,7 +30,7 @@
     }
     #poster-inner {
       max-width: 420px; width: 100%; padding: 24px 20px; border-radius: 24px;
-      background: radial-gradient(circle at top, #243b74, #05070c);
+      background: radial-gradient(circle at top,#243b74,#05070c);
       box-shadow: 0 18px 40px rgba(0,0,0,0.6);
       border: 1px solid rgba(255,255,255,0.08);
     }
@@ -48,7 +47,6 @@
     #startAr:active { transform: scale(.94); }
     #startAr[disabled]{ opacity:.55; cursor: wait; }
 
-    /* Ladeanzeige */
     #loading-status {
       position: fixed;
       inset: 0;
@@ -58,7 +56,13 @@
       z-index: 10;
     }
 
-    /* Container für 3D/AR */
+    #err {
+      position: fixed; left: 12px; top: 12px; z-index: 40;
+      background: #b00020; color:#fff; padding:8px 10px; border-radius:8px;
+      display:none; font:12px/1.35 monospace;
+      max-width:min(92vw,680px); white-space:pre-wrap;
+    }
+
     #ar-container {
       width: 100%; height: 100%;
       position: relative;
@@ -75,72 +79,63 @@
       transform: translateY(var(--model-vertical-offset));
     }
 
-    /* AR UI Overlay */
     #ar-ui {
-      position: fixed; inset: 0; z-index: 30;
-      display: none; pointer-events: none;
+      position: fixed; inset:0; z-index:30;
+      display:none; pointer-events:none;
       font-family: inherit;
     }
     .bottom-bar {
       position:absolute; left:0; right:0;
-      bottom: max(env(safe-area-inset-bottom),16px);
+      bottom:max(env(safe-area-inset-bottom),16px);
       display:flex; align-items:center; justify-content:center;
       gap:22px; pointer-events:auto; padding:0 18px;
     }
 
-    /* Mute Button */
-    #btn-mute {
+    #btn-mute, #btn-shutter, #btn-record {
       appearance:none; border:none; cursor:pointer;
-      width:44px; height:44px; border-radius:50%;
-      background:rgba(30,30,30,0.6); color:#fff; font-size:18px;
-      display:none; align-items:center; justify-content:center;
+      border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
       backdrop-filter:blur(4px);
-      border:1px solid rgba(255,255,255,0.2);
+      border:1px solid rgba(255,255,255,0.25);
       box-shadow:0 4px 12px rgba(0,0,0,0.4);
+      color:#fff;
     }
 
-    /* Shutter Button */
+    #btn-mute {
+      width:44px; height:44px; background:rgba(30,30,30,0.6); font-size:18px;
+      display:none;
+    }
+
     #btn-shutter {
-      appearance:none; border:none; cursor:pointer;
-      width:78px; height:78px; border-radius:50%;
-      background:radial-gradient(circle at 50% 50%,#fff 60%,#dfe6f2 100%);
-      box-shadow:0 8px 22px rgba(0,0,0,.55);
-      position:relative; overflow:hidden;
+      width:70px; height:70px;
+      background:radial-gradient(circle,#fff 60%,#dfe6f2 100%);
+      position:relative;
       transition:transform .25s;
     }
-    #btn-shutter:active { transform: scale(.92); }
-    #btn-shutter.recording {
-      background:radial-gradient(circle at 50% 50%,#ff3b30 60%,#d7261b 100%);
-      animation:pulse 1.1s ease-in-out infinite;
-    }
+    #btn-shutter:active { transform:scale(.92); }
     #btn-shutter.snap { animation:snap-blink 180ms ease-out; }
+    @keyframes snap-blink {0%{transform:scale(1)}50%{transform:scale(.9)}100%{transform:scale(1)}}
 
-    @keyframes pulse { 0%{transform:scale(1)}50%{transform:scale(1.06)}100%{transform:scale(1)} }
-    @keyframes snap-blink { 0%{transform:scale(1)}50%{transform:scale(.9)}100%{transform:scale(1)} }
+    #btn-record {
+      width:54px; height:54px;
+      background:radial-gradient(circle,#ff3b30 65%,#c72018 100%);
+      font-size:20px;
+    }
+    #btn-record.recording {
+      animation:pulse 1.05s ease-in-out infinite;
+    }
+    @keyframes pulse {0%{transform:scale(1)}50%{transform:scale(1.06)}100%{transform:scale(1)}}
 
-    /* Aufnahmezeit */
     #rec-info {
       position:absolute;
       bottom: calc(max(env(safe-area-inset-bottom),16px) + 96px);
       left:50%; transform:translateX(-50%);
-      background:#ff3b30; color:#fff; padding:4px 8px; border-radius:4px; font-size:14px;
+      background:#ff3b30; color:#fff;
+      padding:4px 8px; border-radius:4px; font-size:14px;
       display:none; align-items:center; gap:4px;
     }
     #rec-info::before { content:"●"; font-size:10px; animation:pulse 1s infinite; }
 
-    /* Platzhalter Galerie (optional für Thumbnails später) */
-    #btn-gallery {
-      width:54px; height:54px; border-radius:14px; overflow:hidden;
-      border:1px solid rgba(255,255,255,.25);
-      background:#0b0f16 center/cover no-repeat;
-      box-shadow:0 6px 16px rgba(0,0,0,.6);
-    }
-    #btn-gallery:empty::after {
-      content:""; display:block; width:100%; height:100%;
-      background:linear-gradient(135deg,#2a3a52,#253044);
-    }
-
-    /* Hotspots */
     .Hotspot {
       background: rgba(30,30,30,0.75);
       color: #fff;
@@ -150,20 +145,14 @@
       font-size: 12px;
       cursor: pointer;
     }
-    .Hotspot:hover { background: rgba(60,60,60,0.85); }
-
-    /* Fehleranzeige */
-    #err {
-      position: fixed; left: 12px; top: 12px; z-index: 40;
-      background: #b00020; color: #fff; padding: 8px 10px; border-radius: 8px;
-      display: none; font: 12px/1.35 monospace;
-      max-width: min(92vw,680px); white-space: pre-wrap;
+    .Hotspot.in-ar {
+      background: rgba(0,140,255,0.85);
+      border-color: rgba(255,255,255,0.6);
     }
   </style>
 </head>
 <body>
 
-  <!-- Poster vor Start -->
   <div id="poster">
     <div id="poster-inner">
       <h1 id="posterTitle">3D / AR Erlebnis</h1>
@@ -172,31 +161,27 @@
     </div>
   </div>
 
-  <!-- Ladeanzeige -->
   <div id="loading-status">Lade Szene…</div>
-
-  <!-- Fehleranzeige -->
   <div id="err"></div>
 
-  <!-- Container für Viewer -->
   <div id="ar-container" style="display:none;">
     <model-viewer id="ar-scene-element"
       loading="eager"
-      disable-tap>
+      disable-tap
+      camera-controls>
     </model-viewer>
   </div>
 
-  <!-- AR UI (nur während Session sichtbar) -->
   <div id="ar-ui">
     <div class="bottom-bar">
-      <button id="btn-mute" aria-label="Audio stummschalten / aktivieren">🔊</button>
-      <div id="btn-gallery"></div>
-      <button id="btn-shutter" aria-label="Screenshot / Aufnahme"></button>
+      <button id="btn-mute" aria-label="Audio stumm/aktivieren">🔊</button>
+      <button id="btn-shutter" aria-label="Screenshot">📷</button>
+      <button id="btn-record" aria-label="Aufnahme starten/stoppen">●</button>
       <div id="rec-info">00:00</div>
     </div>
   </div>
 
-  <!-- Externes Viewer-Skript -->
-  <script type="module" src="./js/viewer.js"></script>
+  <!-- Entry Point -->
+  <script type="module" src="./js/viewer/index.js"></script>
 </body>
 </html>
