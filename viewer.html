@@ -100,13 +100,13 @@
       <button id="btn-shutter"></button>
       <div id="rec-info">00:00</div>
     </div>
-  </div>
+    </div>
 
     <div id="err"></div>
 
     <script type="module">
 
-// HINWEIS: Der Import von 'publish-utils.js' wurde entfernt, da die Datei im Viewer-Repo fehlt.
+// HINWEIS: Der Import von 'publish-utils.js' wurde entfernt.
 // Die benötigte Hilfsfunktion fetchWithTimeout ist jetzt hier integriert.
 
 // --- INEGRIERTE HILFSFUNKTION (ersetzt publish-utils.js) ---
@@ -178,8 +178,8 @@ function initAudio(audioCfg, sceneId, workerBase) {
         return;
     }
 
-    // Korrigierter Pfad: sollte auf die Asset-URL zeigen, nicht auf /get/
-    const audioUrl = `${workerBase}/scene/${sceneId}/${audioCfg.url}`;
+    // KORRIGIERTER PFAD: Zurück auf /get/, da /scene/ nicht funktioniert.
+    const audioUrl = `${workerBase}/get/${sceneId}/${audioCfg.url}`;
     
     arAudio = new Audio(audioUrl);
     arAudio.loop = !!audioCfg.loop;
@@ -233,7 +233,7 @@ function applyYOffset(yOffset) {
     console.log(`Angewandter Y-Offset (Anti-Schwebe-Fix): ${offsetCSS}`);
 }
 
-// --- SHUTTER / SCREENSHOT / VIDEO LOGIK (Hinzugefügt) ---
+// --- SHUTTER / SCREENSHOT / VIDEO LOGIK ---
 
 function formatTime(seconds) {
     const min = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -262,9 +262,7 @@ function stopRecording(timerId) {
     btnShutter.classList.remove('recording');
     recInfo.style.display = 'none';
 
-    // Trigger Video Download (Platzhalter, da model-viewer API-abhängig)
     console.log("Videoaufnahme gestoppt. Download wird initiiert.");
-    // modelViewer.stopRecord(); // Abhängig von der Model-Viewer-Version
 }
 
 function takeScreenshot() {
@@ -303,7 +301,8 @@ async function loadScene() {
             throw new Error('Fehlende URL-Parameter (scene/base).');
         }
 
-        const sceneConfigUrl = `${workerBase}/scene/${sceneId}/scene.json`;
+        // KORRIGIERTER PFAD: Zurück auf /get/, da /scene/ nicht funktioniert und 404 auslöst.
+        const sceneConfigUrl = `${workerBase}/get/${sceneId}/scene.json`;
         
         // 1. Konfiguration laden
         const response = await fetchWithTimeout(sceneConfigUrl, { timeoutMs: 15000 });
@@ -316,8 +315,8 @@ async function loadScene() {
             throw new Error('Kein 3D-Modell in der Konfiguration gefunden.');
         }
 
-        // Korrigierter Pfad: sollte den tatsächlichen GLB-Dateinamen aus der Konfig verwenden
-        const modelUrl = `${workerBase}/scene/${sceneId}/${cfg.model.url}`; 
+        // KORRIGIERTER PFAD: Zurück auf /get/
+        const modelUrl = `${workerBase}/get/${sceneId}/${cfg.model.url}`; 
         modelViewer.setAttribute('src', modelUrl);
         modelViewer.setAttribute('alt', cfg.meta?.title || '3D-Modell');
         modelViewer.setAttribute('shadow-intensity', '1');
@@ -361,7 +360,7 @@ async function loadScene() {
             }
         });
         
-        // NEU: Event-Listener für den Shutter-Button
+        // Event-Listener für den Shutter-Button
         btnShutter.addEventListener('click', (e) => {
             if (isRecording) {
                 stopRecording(recordingTimerId);
@@ -379,7 +378,6 @@ async function loadScene() {
                 isRecording = true;
                 btnShutter.classList.add('recording');
                 recordingTimerId = startRecordingTimer();
-                // modelViewer.startRecord(); 
                 console.log("Videoaufnahme gestartet (simuliert).");
             } else {
                 console.warn("Videoaufnahme nur in aktiver AR-Sitzung möglich.");
@@ -394,7 +392,7 @@ async function loadScene() {
                 const clickable = cfg.clickableNodes[0]; 
                 
                 if (clickable && clickable.url) {
-                    // Prüfen, ob eine AR-Session aktiv ist, da modelViewer.hasARSession nicht immer zuverlässig ist
+                    // Prüfen, ob eine AR-Session aktiv ist
                     const isARActive = modelViewer.matches(':--ar-session'); 
                     
                     if (isARActive) {
@@ -434,8 +432,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // START AR Button Handler
     startArButton.onclick = () => {
-        // modelViewer.activateAR() startet die AR-Session.
-        // Bei Erfolg wird 'ar-status session-started' ausgelöst.
         modelViewer.activateAR();
         startArButton.disabled = true; 
         
