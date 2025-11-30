@@ -64,7 +64,7 @@
       background:rgba(30,30,30,0.6);color:#fff;font-size:18px;
       display:flex;align-items:center;justify-content:center;
       backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.2);
-      box-shadow:0 4px 12px rgba(0,0,0,.4);
+      box-shadow:0 4px 12px rgba(0,0,0,0.4);
     }
 
     @keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.06)}100%{transform:scale(1)}}
@@ -178,8 +178,8 @@ function initAudio(audioCfg, sceneId, workerBase) {
         return;
     }
 
-    // KORRIGIERTER PFAD: Zurück auf /get/, da /scene/ nicht funktioniert.
-    const audioUrl = `${workerBase}/get/${sceneId}/${audioCfg.url}`;
+    // ✅ KORREKTUR: Verwende den Pfad /scenes/ (Plural)
+    const audioUrl = `${workerBase}/scenes/${sceneId}/${audioCfg.url}`;
     
     arAudio = new Audio(audioUrl);
     arAudio.loop = !!audioCfg.loop;
@@ -301,8 +301,8 @@ async function loadScene() {
             throw new Error('Fehlende URL-Parameter (scene/base).');
         }
 
-        // KORRIGIERTER PFAD: Zurück auf /get/, da /scene/ nicht funktioniert und 404 auslöst.
-        const sceneConfigUrl = `${workerBase}/get/${sceneId}/scene.json`;
+        // ✅ KORREKTUR: Verwende den Pfad /scenes/ (Plural), der von den Workern erwartet wird.
+        const sceneConfigUrl = `${workerBase}/scenes/${sceneId}/scene.json`;
         
         // 1. Konfiguration laden
         const response = await fetchWithTimeout(sceneConfigUrl, { timeoutMs: 15000 });
@@ -315,8 +315,8 @@ async function loadScene() {
             throw new Error('Kein 3D-Modell in der Konfiguration gefunden.');
         }
 
-        // KORRIGIERTER PFAD: Zurück auf /get/
-        const modelUrl = `${workerBase}/get/${sceneId}/${cfg.model.url}`; 
+        // ✅ KORREKTUR: Verwende den Pfad /scenes/ (Plural)
+        const modelUrl = `${workerBase}/scenes/${sceneId}/${cfg.model.url}`; 
         modelViewer.setAttribute('src', modelUrl);
         modelViewer.setAttribute('alt', cfg.meta?.title || '3D-Modell');
         modelViewer.setAttribute('shadow-intensity', '1');
