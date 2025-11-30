@@ -96,7 +96,7 @@
 
     <div id="ar-ui">
     <div class="bottom-bar">
-      <button id="btn-mute">🔊</button>        <div id="btn-gallery"></div>
+      <button id="btn-mute">🔊</button>        <div id="btn-gallery"></div>
       <button id="btn-shutter"></button>
       <div id="rec-info">00:00</div>
     </div>
@@ -110,8 +110,12 @@
 // Die benötigte Hilfsfunktion fetchWithTimeout ist jetzt hier integriert.
 
 // --- INEGRIERTE HILFSFUNKTION (ersetzt publish-utils.js) ---
+/**
+ * Führt einen Fetch-Request mit Timeout durch.
+ */
 async function fetchWithTimeout(resource, options = {}) {
-    const { timeoutMs = 15000 } = options;
+    // Korrekte Verwendung von timeoutMs aus options, wie von Copilot gefordert
+    const { timeoutMs = 15000 } = options; 
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -140,8 +144,9 @@ const AR_UI_ID = 'ar-ui';
 let arAudio = null;
 let cfg = null;
 let isAudioMuted = false;
-let isRecording = false; 
-let recTimer = 0; 
+let isRecording = false; 
+let recTimer = 0;
+let recordingTimerId = null; // ✅ KORREKTUR: Globally accessible ID for the interval timer
 
 // --- DOM-ELEMENTE ---
 const modelViewer = document.getElementById(MV_ID);
@@ -178,7 +183,7 @@ function initAudio(audioCfg, sceneId, workerBase) {
         return;
     }
 
-    // ✅ KORREKTUR: Verwende den Pfad /scenes/ (Plural)
+    // Pfad ist korrekt (Plural: /scenes/)
     const audioUrl = `${workerBase}/scenes/${sceneId}/${audioCfg.url}`;
     
     arAudio = new Audio(audioUrl);
@@ -224,11 +229,10 @@ function toggleAudio(play) {
  */
 function applyYOffset(yOffset) {
     if (!modelViewer || yOffset === undefined) return;
-    
+    
     // Der Offset muss negativ sein, um das Modell im Viewport nach oben zu bewegen.
-    // model-viewer ist ein Web-Component, transform funktioniert gut.
     const offsetCSS = `${-yOffset}m`;
-    modelViewer.style.setProperty('--model-vertical-offset', offsetCSS);
+    document.documentElement.style.setProperty('--model-vertical-offset', offsetCSS); // Setze es auf root
     
     console.log(`Angewandter Y-Offset (Anti-Schwebe-Fix): ${offsetCSS}`);
 }
@@ -241,28 +245,38 @@ function formatTime(seconds) {
     return `${min}:${sec}`;
 }
 
+/**
+ * Startet den Videoaufnahme-Timer (Die eigentliche Videoaufnahme ist simuliert).
+ */
 function startRecordingTimer() {
     recTimer = 0;
     recInfo.textContent = formatTime(recTimer);
     recInfo.style.display = 'flex';
     btnShutter.classList.add('recording'); // Füge Klasse zum Shutter hinzu
 
-    return setInterval(() => {
+    // Setzt die globale recordingTimerId
+    recordingTimerId = setInterval(() => {
         recTimer++;
         recInfo.textContent = formatTime(recTimer);
         if (recTimer >= 60) {
-            stopRecording(recTimerId); // Begrenzung auf 60 Sekunden
+            stopRecording(); // ✅ KORREKTUR: Ruft stopRecording ohne ID auf
         }
     }, 1000);
 }
 
-function stopRecording(timerId) {
-    clearInterval(timerId);
+/**
+ * Stoppt die Videoaufnahme und den Timer.
+ */
+function stopRecording() { // ✅ KORREKTUR: Nimmt recordingTimerId nicht als Parameter an
+    if (recordingTimerId) {
+        clearInterval(recordingTimerId);
+        recordingTimerId = null; // Timer ID zurücksetzen
+    }
     isRecording = false;
     btnShutter.classList.remove('recording');
     recInfo.style.display = 'none';
 
-    console.log("Videoaufnahme gestoppt. Download wird initiiert.");
+    console.log("Videoaufnahme gestoppt. Download wird initiiert (simuliert).");
 }
 
 function takeScreenshot() {
@@ -301,10 +315,10 @@ async function loadScene() {
             throw new Error('Fehlende URL-Parameter (scene/base).');
         }
 
-        // ✅ KORREKTUR: Verwende den Pfad /scenes/ (Plural), der von den Workern erwartet wird.
+        // Pfad ist korrekt (Plural: /scenes/)
         const sceneConfigUrl = `${workerBase}/scenes/${sceneId}/scene.json`;
         
-        // 1. Konfiguration laden
+        // 1. Konfiguration laden (fetchWithTimeout ist jetzt robust)
         const response = await fetchWithTimeout(sceneConfigUrl, { timeoutMs: 15000 });
         if (!response.ok) throw new Error(`Laden von scene.json fehlgeschlagen: ${response.status}`);
         
@@ -315,8 +329,8 @@ async function loadScene() {
             throw new Error('Kein 3D-Modell in der Konfiguration gefunden.');
         }
 
-        // ✅ KORREKTUR: Verwende den Pfad /scenes/ (Plural)
-        const modelUrl = `${workerBase}/scenes/${sceneId}/${cfg.model.url}`; 
+        // Pfad ist korrekt (Plural: /scenes/)
+        const modelUrl = `${workerBase}/scenes/${sceneId}/${cfg.model.url}`; 
         modelViewer.setAttribute('src', modelUrl);
         modelViewer.setAttribute('alt', cfg.meta?.title || '3D-Modell');
         modelViewer.setAttribute('shadow-intensity', '1');
@@ -326,7 +340,7 @@ async function loadScene() {
         modelViewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
         modelViewer.setAttribute('interaction-prompt', 'none'); 
         modelViewer.setAttribute('auto-rotate-delay', '1000');
-        modelViewer.setAttribute('disable-tap', ''); 
+        modelViewer.setAttribute('disable-tap', ''); 
 
         // 3. Audio initialisieren
         initAudio(cfg.audio, sceneId, workerBase);
@@ -335,7 +349,7 @@ async function loadScene() {
         if (cfg.model.yOffset !== undefined) {
             applyYOffset(cfg.model.yOffset);
         }
-        
+        
         // 5. Poster-Text aktualisieren
         const posterTitle = document.getElementById('posterTitle');
         const posterText = document.getElementById('posterText');
@@ -344,8 +358,6 @@ async function loadScene() {
         
         // 6. Events hinzufügen
         
-        let recordingTimerId;
-        
         // Poster ausblenden, AR-UI einblenden, Audio starten, sobald AR/XR startet
         modelViewer.addEventListener('ar-status', (event) => {
             if (event.detail.status === 'session-started') {
@@ -356,14 +368,14 @@ async function loadScene() {
                 arUI.style.display = 'none';
                 toggleAudio(false);
                 poster.style.display = 'flex';
-                if (isRecording) stopRecording(recordingTimerId);
+                if (isRecording) stopRecording(); // ✅ KORREKTUR: Stoppt die Aufnahme, wenn AR beendet wird
             }
         });
-        
+        
         // Event-Listener für den Shutter-Button
         btnShutter.addEventListener('click', (e) => {
             if (isRecording) {
-                stopRecording(recordingTimerId);
+                stopRecording(); // ✅ KORREKTUR: Ruft stopRecording ohne ID auf
             } else {
                 takeScreenshot();
             }
@@ -372,12 +384,12 @@ async function loadScene() {
         btnShutter.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             if (isRecording) return; // Nicht starten, wenn bereits aufnimmt
-            
+            
             // Check, ob AR-Session aktiv ist
             if (modelViewer.hasARSession) {
                 isRecording = true;
                 btnShutter.classList.add('recording');
-                recordingTimerId = startRecordingTimer();
+                startRecordingTimer(); // Startet den Timer und setzt die globale ID
                 console.log("Videoaufnahme gestartet (simuliert).");
             } else {
                 console.warn("Videoaufnahme nur in aktiver AR-Sitzung möglich.");
@@ -388,13 +400,15 @@ async function loadScene() {
         modelViewer.addEventListener('click', (event) => {
             if (!cfg.clickableNodes || cfg.clickableNodes.length === 0) return;
             
+            // Überprüfe, ob auf das Modell oder den Canvas geklickt wurde
+            // Anmerkung: Hotspots müssen in model-viewer über eigene HTML-Elemente gelöst werden.
             if (event.detail.target === modelViewer || event.detail.target.tagName === 'CANVAS') {
-                const clickable = cfg.clickableNodes[0]; 
+                const clickable = cfg.clickableNodes[0]; 
                 
                 if (clickable && clickable.url) {
                     // Prüfen, ob eine AR-Session aktiv ist
-                    const isARActive = modelViewer.matches(':--ar-session'); 
-                    
+                    const isARActive = modelViewer.matches(':--ar-session'); 
+                    
                     if (isARActive) {
                          // In AR-Session: Stoppen und dann öffnen
                          modelViewer.stopAR();
@@ -419,10 +433,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
     
-    // Setzt das initial benötigte CSS für den Y-Offset
-    modelViewer.style.setProperty('--model-vertical-offset', '0'); 
+    // Setzt das initial benötigte CSS für den Y-Offset (wird auf HTML-Root gesetzt)
+    document.documentElement.style.setProperty('--model-vertical-offset', '0'); 
     
-    // Sicherstellen, dass die Poster-ID's gesetzt sind
+    // Sicherstellen, dass die Poster-ID's gesetzt sind (falls nicht in der Markup vorhanden)
     if(!document.getElementById('posterTitle') && document.querySelector('#poster-inner h1')) {
         document.querySelector('#poster-inner h1').id = 'posterTitle';
     }
@@ -433,8 +447,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // START AR Button Handler
     startArButton.onclick = () => {
         modelViewer.activateAR();
-        startArButton.disabled = true; 
-        
+        startArButton.disabled = true; 
+        
         // Füge einen Listener hinzu, um den Button bei Fehler freizugeben
         modelViewer.addEventListener('ar-status', (event) => {
             if (event.detail.status === 'failed' || event.detail.status === 'not-presenting') {
