@@ -1,466 +1,445 @@
 <!doctype html>
 <html lang="de">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>ARea Viewer – Surface AR</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <title>ARea Viewer – Surface AR</title>
 
-    <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+  <!-- model-viewer -->
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
 
-  <style>
-    :root{
-      color-scheme:dark light;
-      /* NEU: Variable für den vertikalen Offset, wird im JS gesetzt */
-      --model-vertical-offset: 0;
-    }
-    *,*::before,*::after{box-sizing:border-box}
-    html,body{
-      margin:0;height:100%;
-      background:#000 !important;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-      overscroll-behavior:none;touch-action:manipulation;
-    }
+  <style>
+    :root {
+      color-scheme: dark light;
+      /* Variable für vertikalen Offset (nur im normalen 3D Viewer wirksam) */
+      --model-vertical-offset: 0px;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%;
+      background: #000 !important;
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+      overscroll-behavior: none;
+      touch-action: manipulation;
+    }
 
-    /* Poster */
-    #poster{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#05070c;z-index:9999;color:#fff;text-align:center;padding:24px}
-    #poster-inner{max-width:420px;width:100%;padding:24px 20px;border-radius:24px;background:radial-gradient(circle at top,#243b74,#05070c);box-shadow:0 18px 40px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,.08)}
-    #posterImage{width:100%;max-height:220px;object-fit:cover;border-radius:16px;display:none;margin-bottom:16px;background:#111}
-    #poster h1{font-size:22px;margin:0 0 8px}
-    #poster p{margin:0 0 16px;font-size:14px;opacity:0.9}
-    #startAr{appearance:none;border:none;border-radius:999px;padding:10px 22px;font-size:15px;font-weight:500;background:linear-gradient(135deg,#5ddcff,#3c67e3);color:#fff;cursor:pointer;box-shadow:0 8px 22px rgba(0,0,0,.5)}
-    #startAr[disabled]{opacity:.55;cursor:wait}
+    /* Poster Overlay */
+    #poster {
+      position: fixed; inset: 0; display: flex;
+      align-items: center; justify-content: center;
+      background: #05070c; z-index: 9999; color: #fff;
+      text-align: center; padding: 24px;
+    }
+    #poster-inner {
+      max-width: 420px; width: 100%; padding: 24px 20px; border-radius: 24px;
+      background: radial-gradient(circle at top, #243b74, #05070c);
+      box-shadow: 0 18px 40px rgba(0,0,0,0.6);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    #posterImage { width: 100%; max-height: 220px; object-fit: cover; border-radius: 16px; display: none; margin-bottom: 16px; background:#111; }
+    #poster h1 { font-size: 22px; margin: 0 0 8px; }
+    #poster p { margin: 0 0 16px; font-size: 14px; opacity: 0.9; }
+    #startAr {
+      appearance: none; border: none; border-radius: 999px;
+      padding: 10px 22px; font-size: 15px; font-weight: 500;
+      background: linear-gradient(135deg,#5ddcff,#3c67e3); color:#fff;
+      cursor: pointer;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.5);
+      transition: transform .25s;
+    }
+    #startAr:active { transform: scale(.94); }
+    #startAr[disabled]{ opacity: .55; cursor: wait; }
 
-    /* model-viewer Host */
-    model-viewer{
-      position:fixed;inset:0;width:100vw;height:100svh;display:block;
-      background:#000 !important;z-index:1;
-      /* NEU: Anwenden der vertikalen Verschiebung für Anti-Schwebe-Fix */
-      transform: translateY(var(--model-vertical-offset)); 
-    }
+    /* model-viewer Host */
+    model-viewer {
+      position: fixed; inset: 0; width: 100vw; height: 100svh; display: block;
+      background: #000 !important; z-index: 1;
+      /* 3D-Viewer Offset (AR ignoriert CSS-Transforms) */
+      transform: translateY(var(--model-vertical-offset));
+    }
 
-    /* Fehler */
-    #err{position:fixed;left:12px;top:12px;z-index:10000;background:#b00020;color:#fff;padding:8px 10px;border-radius:8px;display:none;font:12px/1.35 monospace;max-width:min(92vw,680px);white-space:pre-wrap}
+    /* Fehleranzeige */
+    #err {
+      position: fixed; left: 12px; top: 12px; z-index: 10000;
+      background: #b00020; color: #fff; padding: 8px 10px; border-radius: 8px;
+      display: none; font: 12px/1.35 monospace;
+      max-width: min(92vw, 680px); white-space: pre-wrap;
+    }
 
-    /* AR UI – Kamera-Toolbar (nur WebXR) */
-    #ar-ui{
-      position:fixed;inset:0;z-index:9000;display:none;pointer-events:none;font-family:inherit;
-    }
-    .bottom-bar{
-      position:absolute;left:0;right:0;bottom:max(env(safe-area-inset-bottom),16px);
-      display:flex;align-items:center;justify-content:center;gap:22px;pointer-events:auto;padding:0 18px;
-    }
-    /* Buttons */
-    #btn-gallery{width:54px;height:54px;border-radius:14px;overflow:hidden;border:1px solid rgba(255,255,255,.25);background:#0b0f16 center/cover no-repeat;box-shadow:0 6px 16px rgba(0,0,0,.6)}
-    #btn-gallery img{width:100%;height:100%;object-fit:cover;display:block}
-    #btn-gallery:empty::after{content:"";display:block;width:100%;height:100%;background:linear-gradient(135deg,#2a3a52,#253044)}
-    
-    #btn-shutter{appearance:none;border:none;cursor:pointer;width:78px;height:78px;border-radius:50%;background:radial-gradient(circle at 50% 50%,#fff 60%,#dfe6f2 100%);box-shadow:0 8px 22px rgba(0,0,0,.55)}
-    #btn-shutter.recording{background:radial-gradient(circle at 50% 50%,#ff3b30 60%,#d7261b 100%);animation:pulse 1.1s ease-in-out infinite}
-    #btn-shutter.snap{animation:snap-blink 180ms ease-out}
-    
-    /* Mute Button Style */
-    #btn-mute{
-      appearance:none;border:none;cursor:pointer;width:44px;height:44px;border-radius:50%;
-      background:rgba(30,30,30,0.6);color:#fff;font-size:18px;
-      display:flex;align-items:center;justify-content:center;
-      backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.2);
-      box-shadow:0 4px 12px rgba(0,0,0,0.4);
-    }
+    /* AR UI */
+    #ar-ui {
+      position: fixed; inset: 0; z-index: 9000; display: none;
+      pointer-events: none; font-family: inherit;
+    }
+    .bottom-bar {
+      position: absolute; left: 0; right: 0;
+      bottom: max(env(safe-area-inset-bottom),16px);
+      display: flex; align-items: center; justify-content: center;
+      gap: 22px; pointer-events: auto; padding: 0 18px;
+    }
 
-    @keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.06)}100%{transform:scale(1)}}
-    @keyframes snap-blink{0%{transform:scale(1)}50%{transform:scale(.9)}100%{transform:scale(1)}}
-    #rec-info{position:absolute;bottom:calc(max(env(safe-area-inset-bottom),16px)+96px);left:50%;transform:translateX(-50%);
-      background:#ff3b30;color:#fff;padding:4px 8px;border-radius:4px;font-size:14px;
-      display:none;align-items:center;gap:4px;
-    }
-    #rec-info::before{content:"●";font-size:10px;animation:pulse 1s infinite}
-  </style>
+    /* Galerie Button */
+    #btn-gallery {
+      width: 54px; height: 54px; border-radius: 14px; overflow: hidden;
+      border: 1px solid rgba(255,255,255,.25);
+      background: #0b0f16 center/cover no-repeat;
+      box-shadow: 0 6px 16px rgba(0,0,0,.6);
+    }
+    #btn-gallery img { width:100%; height:100%; object-fit:cover; display:block; }
+    #btn-gallery:empty::after {
+      content: ""; display: block; width: 100%; height: 100%;
+      background: linear-gradient(135deg,#2a3a52,#253044);
+    }
 
+    /* Shutter Button */
+    #btn-shutter {
+      appearance: none; border: none; cursor: pointer;
+      width: 78px; height: 78px; border-radius: 50%;
+      background: radial-gradient(circle at 50% 50%, #fff 60%, #dfe6f2 100%);
+      box-shadow: 0 8px 22px rgba(0,0,0,.55);
+      position: relative; overflow: hidden;
+      transition: transform .25s;
+    }
+    #btn-shutter:active { transform: scale(.92); }
+    #btn-shutter.recording {
+      background: radial-gradient(circle at 50% 50%, #ff3b30 60%, #d7261b 100%);
+      animation: pulse 1.1s ease-in-out infinite;
+    }
+    #btn-shutter.snap { animation: snap-blink 180ms ease-out; }
+
+    /* Mute Button */
+    #btn-mute {
+      appearance: none; border: none; cursor: pointer;
+      width: 44px; height: 44px; border-radius: 50%;
+      background: rgba(30,30,30,0.6); color:#fff; font-size:18px;
+      display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(255,255,255,0.2);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+
+    @keyframes pulse { 0%{transform:scale(1)}50%{transform:scale(1.06)}100%{transform:scale(1)} }
+    @keyframes snap-blink { 0%{transform:scale(1)}50%{transform:scale(.9)}100%{transform:scale(1)} }
+
+    #rec-info {
+      position:absolute;
+      bottom: calc(max(env(safe-area-inset-bottom),16px) + 96px);
+      left:50%; transform:translateX(-50%);
+      background:#ff3b30; color:#fff; padding:4px 8px; border-radius:4px; font-size:14px;
+      display:none; align-items:center; gap:4px;
+    }
+    #rec-info::before { content:"●"; font-size:10px; animation:pulse 1s infinite; }
+  </style>
 </head>
 <body>
 
-    <model-viewer id="modelViewer" 
-    loading="eager" 
-    poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" 
-    disable-tap>
-  </model-viewer>
+  <model-viewer id="modelViewer"
+    loading="eager"
+    poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+    disable-tap>
+  </model-viewer>
 
-    <div id="poster">
-    <div id="poster-inner">
-      <img id="posterImage" src="" alt="Vorschaubild">
-      <h1 id="posterTitle">3D / AR Erlebnis</h1>
-      <p id="posterText">Tippe auf Start AR, um das Modell in deiner Umgebung zu sehen.</p>
-      <button id="startAr">START AR</button>
-    </div>
-  </div>
+  <div id="poster">
+    <div id="poster-inner">
+      <img id="posterImage" src="" alt="Vorschaubild">
+      <h1 id="posterTitle">3D / AR Erlebnis</h1>
+      <p id="posterText">Tippe auf Start AR, um das Modell in deiner Umgebung zu sehen.</p>
+      <button id="startAr">START AR</button>
+    </div>
+  </div>
 
-    <div id="ar-ui">
-    <div class="bottom-bar">
-      <button id="btn-mute">🔊</button>        <div id="btn-gallery"></div>
-      <button id="btn-shutter"></button>
-      <div id="rec-info">00:00</div>
-    </div>
-    </div>
+  <div id="ar-ui">
+    <div class="bottom-bar">
+      <button id="btn-mute" style="display:none;">🔊</button>
+      <div id="btn-gallery"></div>
+      <button id="btn-shutter" aria-label="Shutter"></button>
+      <div id="rec-info">00:00</div>
+    </div>
+  </div>
 
-    <div id="err"></div>
+  <div id="err"></div>
 
-    <script type="module">
+  <script type="module">
+    // -----------------------------------------------------------
+    // Hilfsfunktion: Fetch mit Timeout & sauberem Abort Handling
+    // -----------------------------------------------------------
+    async function fetchWithTimeout(resource, options = {}) {
+      const { timeoutMs = 15000 } = options;
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeoutMs);
 
-// HINWEIS: Der Import von 'publish-utils.js' wurde entfernt.
-// Die benötigte Hilfsfunktion fetchWithTimeout ist jetzt hier integriert.
+      try {
+        const response = await fetch(resource, { ...options, signal: controller.signal });
+        return response;
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          throw new Error(`Timeout (${timeoutMs} ms) für Anfrage: ${resource}`);
+        }
+        throw error;
+      } finally {
+        clearTimeout(id);
+      }
+    }
 
-// --- INEGRIERTE HILFSFUNKTION (ersetzt publish-utils.js) ---
-/**
- * Führt einen Fetch-Request mit Timeout durch.
- */
-async function fetchWithTimeout(resource, options = {}) {
-    // Korrekte Verwendung von timeoutMs aus options, wie von Copilot gefordert
-    const { timeoutMs = 15000 } = options; 
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeoutMs);
+    // Globale Zustände
+    let arAudio = null;
+    let cfg = null;
+    let isAudioMuted = false;
+    let isRecording = false;
+    let recTimer = 0;
+    let recordingTimerId = null;
+    let arSessionActive = false; // AR-Zustand über Events pflegen
 
-    try {
-        const response = await fetch(resource, {
-            ...options,
-            signal: controller.signal
-        });
-        clearTimeout(id);
-        return response;
-    } catch (error) {
-        clearTimeout(id);
-        throw error;
-    }
-}
-// -----------------------------------------------------------------
+    // DOM Referenzen
+    const modelViewer = document.getElementById('modelViewer');
+    const poster = document.getElementById('poster');
+    const arUI = document.getElementById('ar-ui');
+    const btnMute = document.getElementById('btn-mute');
+    const btnShutter = document.getElementById('btn-shutter');
+    const recInfo = document.getElementById('rec-info');
+    const errEl = document.getElementById('err');
+    const startArButton = document.getElementById('startAr');
 
+    function displayError(message) {
+      console.error('VIEWER ERROR:', message);
+      errEl.textContent = 'FEHLER: ' + message;
+      errEl.style.display = 'block';
+    }
 
-// --- KONSTANTEN und GLOBALE ZUSTÄNDE ---
-const MODEL_VIEWER_TAG = 'model-viewer';
-const MV_ID = 'modelViewer';
-const ERR_ID = 'err';
-const POSTER_ID = 'poster';
-const AR_UI_ID = 'ar-ui';
+    function updateMuteButtonUI() {
+      btnMute.textContent = isAudioMuted ? '🔇' : '🔊';
+    }
 
-let arAudio = null;
-let cfg = null;
-let isAudioMuted = false;
-let isRecording = false; 
-let recTimer = 0;
-let recordingTimerId = null; // ✅ KORREKTUR: Globally accessible ID for the interval timer
+    function initAudio(audioCfg, sceneId, workerBase) {
+      if (!audioCfg || !audioCfg.url) {
+        btnMute.style.display = 'none';
+        return;
+      }
+      const audioUrl = `${workerBase}/scenes/${sceneId}/${audioCfg.url}`;
+      arAudio = new Audio(audioUrl);
+      arAudio.loop = !!audioCfg.loop;
+      arAudio.volume = audioCfg.volume !== undefined ? audioCfg.volume : 0.8;
 
-// --- DOM-ELEMENTE ---
-const modelViewer = document.getElementById(MV_ID);
-const poster = document.getElementById(POSTER_ID);
-const arUI = document.getElementById(AR_UI_ID);
-const btnMute = document.getElementById('btn-mute');
-const btnShutter = document.getElementById('btn-shutter');
-const recInfo = document.getElementById('rec-info');
-const errEl = document.getElementById(ERR_ID);
-const startArButton = document.getElementById('startAr');
-const btnGallery = document.getElementById('btn-gallery');
+      btnMute.style.display = 'flex';
+      updateMuteButtonUI();
+      btnMute.onclick = () => {
+        isAudioMuted = !isAudioMuted;
+        arAudio.muted = isAudioMuted;
+        updateMuteButtonUI();
+      };
+    }
 
+    function toggleAudio(play) {
+      if (!arAudio) return;
+      if (play) {
+        if (!isAudioMuted) {
+          const delay = cfg.audio?.delaySeconds || 0;
+            if (delay > 0) {
+              setTimeout(() => arAudio.play().catch(e => console.warn('Audio play failed:', e)), delay * 1000);
+            } else {
+              arAudio.play().catch(e => console.warn('Audio play failed:', e));
+            }
+        }
+      } else {
+        arAudio.pause();
+        arAudio.currentTime = 0;
+      }
+    }
 
-// --- HILFSFUNKTIONEN ---
+    // Y-Offset nur im 3D-Modus (visuell)
+    function applyYOffset(yOffset) {
+      if (yOffset === undefined || yOffset === null) return;
+      // Beispiel: 1 "Meter" ~ 100px – heuristisch; anpassbar
+      const px = (-yOffset * 100).toFixed(0) + 'px';
+      document.documentElement.style.setProperty('--model-vertical-offset', px);
+      console.log(`Y-Offset angewandt (nur 3D Ansicht): ${px}`);
+    }
 
-function displayError(message) {
-    console.error('VIEWER ERROR:', message);
-    if (errEl) {
-        errEl.textContent = 'FEHLER: ' + message;
-        errEl.style.display = 'block';
-    }
-}
+    // Timer- / Aufnahme-Logik (Simulation)
+    function formatTime(seconds) {
+      const min = String(Math.floor(seconds / 60)).padStart(2,'0');
+      const sec = String(seconds % 60).padStart(2,'0');
+      return `${min}:${sec}`;
+    }
 
-function updateMuteButtonUI() {
-    btnMute.textContent = isAudioMuted ? '🔇' : '🔊';
-}
+    function startRecordingTimer() {
+      recTimer = 0;
+      recInfo.textContent = formatTime(recTimer);
+      recInfo.style.display = 'flex';
+      btnShutter.classList.add('recording');
+      recordingTimerId = setInterval(() => {
+        recTimer++;
+        recInfo.textContent = formatTime(recTimer);
+        if (recTimer >= 60) {
+          stopRecording();
+        }
+      }, 1000);
+    }
 
-/**
- * Initialisiert das Audio-Handling basierend auf der Szene-Konfiguration.
- */
-function initAudio(audioCfg, sceneId, workerBase) {
-    if (!audioCfg || !audioCfg.url) {
-        if (btnMute) btnMute.style.display = 'none';
-        return;
-    }
+    function stopRecording() {
+      if (recordingTimerId) {
+        clearInterval(recordingTimerId);
+        recordingTimerId = null;
+      }
+      isRecording = false;
+      btnShutter.classList.remove('recording');
+      recInfo.style.display = 'none';
+      console.log("Videoaufnahme gestoppt (simuliert).");
+    }
 
-    // Pfad ist korrekt (Plural: /scenes/)
-    const audioUrl = `${workerBase}/scenes/${sceneId}/${audioCfg.url}`;
-    
-    arAudio = new Audio(audioUrl);
-    arAudio.loop = !!audioCfg.loop;
-    arAudio.volume = audioCfg.volume !== undefined ? audioCfg.volume : 0.8;
+    function takeScreenshot() {
+      btnShutter.classList.add('snap');
+      setTimeout(() => btnShutter.classList.remove('snap'), 300);
 
-    if (btnMute) {
-        // Audio-Button anzeigen, da Audio konfiguriert ist
-        btnMute.style.display = 'flex';
-        updateMuteButtonUI();
+      if (!modelViewer.toBlob) {
+        console.warn('toBlob() nicht unterstützt in dieser model-viewer Version.');
+        return;
+      }
+      modelViewer.toBlob({ mimeType: 'image/png' })
+        .then(blob => {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'ARea_Screenshot.png';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        })
+        .catch(e => console.error('Screenshot fehlgeschlagen:', e));
+    }
 
-        btnMute.onclick = () => {
-            isAudioMuted = !isAudioMuted;
-            arAudio.muted = isAudioMuted;
-            updateMuteButtonUI();
-        };
-    }
-}
+    async function loadScene() {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const sceneId = urlParams.get('scene');
+        const workerBase = urlParams.get('base');
 
-/**
- * Steuert das Audio beim Start/Stopp von WebXR.
- */
-function toggleAudio(play) {
-    if (!arAudio) return;
-    if (play) {
-        if (!isAudioMuted) {
-             // Delay-Support hinzufügen
-            const delay = cfg.audio?.delaySeconds || 0;
-            if (delay > 0) {
-                setTimeout(() => arAudio.play().catch(e => console.warn('Audio play failed:', e)), delay * 1000);
-            } else {
-                arAudio.play().catch(e => console.warn('Audio play failed:', e));
-            }
-        }
-    } else {
-        arAudio.pause();
-        arAudio.currentTime = 0;
-    }
-}
+        if (!sceneId || !workerBase) {
+          throw new Error('Fehlende URL-Parameter (scene/base).');
+        }
 
-/**
- * Wendet den Y-Offset zur Korrektur des Schwebens an.
- */
-function applyYOffset(yOffset) {
-    if (!modelViewer || yOffset === undefined) return;
-    
-    // Der Offset muss negativ sein, um das Modell im Viewport nach oben zu bewegen.
-    const offsetCSS = `${-yOffset}m`;
-    document.documentElement.style.setProperty('--model-vertical-offset', offsetCSS); // Setze es auf root
-    
-    console.log(`Angewandter Y-Offset (Anti-Schwebe-Fix): ${offsetCSS}`);
-}
+        const sceneConfigUrl = `${workerBase}/scenes/${sceneId}/scene.json`;
+        const response = await fetchWithTimeout(sceneConfigUrl, { timeoutMs: 15000 });
+        if (!response.ok) throw new Error(`Laden von scene.json fehlgeschlagen: ${response.status}`);
 
-// --- SHUTTER / SCREENSHOT / VIDEO LOGIK ---
+        cfg = await response.json();
 
-function formatTime(seconds) {
-    const min = Math.floor(seconds / 60).toString().padStart(2, '0');
-    const sec = (seconds % 60).toString().padStart(2, '0');
-    return `${min}:${sec}`;
-}
+        if (!cfg.model || !cfg.model.url) {
+          throw new Error('Kein 3D-Modell in der Konfiguration gefunden.');
+        }
 
-/**
- * Startet den Videoaufnahme-Timer (Die eigentliche Videoaufnahme ist simuliert).
- */
-function startRecordingTimer() {
-    recTimer = 0;
-    recInfo.textContent = formatTime(recTimer);
-    recInfo.style.display = 'flex';
-    btnShutter.classList.add('recording'); // Füge Klasse zum Shutter hinzu
+        // Modell setzen
+        const modelUrl = `${workerBase}/scenes/${sceneId}/${cfg.model.url}`;
+        modelViewer.setAttribute('src', modelUrl);
+        modelViewer.setAttribute('alt', cfg.meta?.title || '3D-Modell');
+        modelViewer.setAttribute('shadow-intensity', '1');
+        modelViewer.setAttribute('camera-controls', '');
+        modelViewer.setAttribute('auto-rotate', '');
+        modelViewer.setAttribute('ar', '');
+        modelViewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
+        modelViewer.setAttribute('interaction-prompt', 'none');
+        modelViewer.setAttribute('auto-rotate-delay', '1000');
+        modelViewer.setAttribute('disable-tap', '');
 
-    // Setzt die globale recordingTimerId
-    recordingTimerId = setInterval(() => {
-        recTimer++;
-        recInfo.textContent = formatTime(recTimer);
-        if (recTimer >= 60) {
-            stopRecording(); // ✅ KORREKTUR: Ruft stopRecording ohne ID auf
-        }
-    }, 1000);
-}
+        // Audio
+        initAudio(cfg.audio, sceneId, workerBase);
 
-/**
- * Stoppt die Videoaufnahme und den Timer.
- */
-function stopRecording() { // ✅ KORREKTUR: Nimmt recordingTimerId nicht als Parameter an
-    if (recordingTimerId) {
-        clearInterval(recordingTimerId);
-        recordingTimerId = null; // Timer ID zurücksetzen
-    }
-    isRecording = false;
-    btnShutter.classList.remove('recording');
-    recInfo.style.display = 'none';
+        // Y-Offset (nur visuell im Nicht-AR Modus)
+        if (typeof cfg.model.yOffset === 'number') {
+          applyYOffset(cfg.model.yOffset);
+        }
 
-    console.log("Videoaufnahme gestoppt. Download wird initiiert (simuliert).");
-}
+        // Poster-Text aktualisieren
+        const posterTitle = document.getElementById('posterTitle');
+        const posterText = document.getElementById('posterText');
+        if (posterTitle) posterTitle.textContent = cfg.meta?.title || 'Augmented Reality Erlebnis';
+        if (posterText) posterText.textContent = 'Tippe auf START AR, um das Modell in deiner Umgebung zu sehen.';
 
-function takeScreenshot() {
-    // Animation für den Button
-    btnShutter.classList.add('snap');
-    setTimeout(() => btnShutter.classList.remove('snap'), 300);
+        // AR Status-Events
+        modelViewer.addEventListener('ar-status', (event) => {
+          const status = event.detail.status;
+          if (status === 'session-started') {
+            arSessionActive = true;
+            poster.style.display = 'none';
+            arUI.style.display = 'block';
+            toggleAudio(true);
+          } else if (status === 'session-ended') {
+            arSessionActive = false;
+            arUI.style.display = 'none';
+            toggleAudio(false);
+            poster.style.display = 'flex';
+            if (isRecording) stopRecording();
+          } else if (status === 'failed') {
+            arSessionActive = false;
+            startArButton.disabled = false;
+            displayError('AR konnte nicht gestartet werden.');
+          }
+        });
 
-    // Screenshot als Blob herunterladen
-    modelViewer.toBlob({ mimeType: 'image/png' })
-        .then(blob => {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'ARea_Screenshot.png';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        })
-        .catch(e => console.error('Screenshot failed:', e));
-}
+        // Shutter: Linksklick = Screenshot / Rechtsklick (Kontextmenü) = Aufnahme starten
+        btnShutter.addEventListener('click', () => {
+          if (isRecording) {
+            stopRecording();
+          } else {
+            takeScreenshot();
+          }
+        });
 
+        btnShutter.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          if (isRecording) return;
+          if (arSessionActive) {
+            isRecording = true;
+            btnShutter.classList.add('recording');
+            startRecordingTimer();
+            console.log("Videoaufnahme gestartet (simuliert).");
+          } else {
+            console.warn("Videoaufnahme nur während aktiver AR-Session möglich.");
+          }
+        });
 
-// --- INITIALISIERUNG und EVENTS ---
+        // Klickbare Nodes (vereinfachter Ansatz: Öffne erstes Link-Objekt)
+        modelViewer.addEventListener('click', (e) => {
+          if (!cfg.clickableNodes || cfg.clickableNodes.length === 0) return;
+          // Wir nehmen exemplarisch den ersten Eintrag
+          const node = cfg.clickableNodes[0];
+          if (node?.url) {
+            if (arSessionActive) {
+              // Beende AR sauber und öffne dann Link
+              modelViewer.dismissAR?.();
+              setTimeout(() => window.open(node.url, '_blank'), 600);
+            } else {
+              window.open(node.url, '_blank');
+            }
+          }
+        });
 
-/**
- * Hauptladefunktion.
- */
-async function loadScene() {
-    try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const sceneId = urlParams.get('scene');
-        const workerBase = urlParams.get('base');
+      } catch (error) {
+        displayError(error.message);
+      }
+    }
 
-        if (!sceneId || !workerBase) {
-            throw new Error('Fehlende URL-Parameter (scene/base).');
-        }
+    document.addEventListener('DOMContentLoaded', () => {
+      if (!modelViewer) {
+        displayError('model-viewer Element fehlt.');
+        return;
+      }
 
-        // Pfad ist korrekt (Plural: /scenes/)
-        const sceneConfigUrl = `${workerBase}/scenes/${sceneId}/scene.json`;
-        
-        // 1. Konfiguration laden (fetchWithTimeout ist jetzt robust)
-        const response = await fetchWithTimeout(sceneConfigUrl, { timeoutMs: 15000 });
-        if (!response.ok) throw new Error(`Laden von scene.json fehlgeschlagen: ${response.status}`);
-        
-        cfg = await response.json();
+      document.documentElement.style.setProperty('--model-vertical-offset', '0px');
 
-        // 2. Model-Viewer konfigurieren
-        if (!cfg.model || !cfg.model.url) {
-            throw new Error('Kein 3D-Modell in der Konfiguration gefunden.');
-        }
+      // START AR Button
+      startArButton.onclick = () => {
+        startArButton.disabled = true;
+        modelViewer.activateAR();
+        // Fallback: Falls kein Session-Start kommt, nach 5s wieder aktivieren
+        setTimeout(() => {
+          if (!arSessionActive) startArButton.disabled = false;
+        }, 5000);
+      };
 
-        // Pfad ist korrekt (Plural: /scenes/)
-        const modelUrl = `${workerBase}/scenes/${sceneId}/${cfg.model.url}`; 
-        modelViewer.setAttribute('src', modelUrl);
-        modelViewer.setAttribute('alt', cfg.meta?.title || '3D-Modell');
-        modelViewer.setAttribute('shadow-intensity', '1');
-        modelViewer.setAttribute('camera-controls', '');
-        modelViewer.setAttribute('auto-rotate', ''); 
-        modelViewer.setAttribute('ar', '');
-        modelViewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
-        modelViewer.setAttribute('interaction-prompt', 'none'); 
-        modelViewer.setAttribute('auto-rotate-delay', '1000');
-        modelViewer.setAttribute('disable-tap', ''); 
-
-        // 3. Audio initialisieren
-        initAudio(cfg.audio, sceneId, workerBase);
-
-        // 4. Anti-Schwebe-Fix anwenden
-        if (cfg.model.yOffset !== undefined) {
-            applyYOffset(cfg.model.yOffset);
-        }
-        
-        // 5. Poster-Text aktualisieren
-        const posterTitle = document.getElementById('posterTitle');
-        const posterText = document.getElementById('posterText');
-        if (posterTitle) posterTitle.textContent = cfg.meta?.title || 'Augmented Reality Erlebnis';
-        if (posterText) posterText.textContent = 'Tippe auf START AR, um das Modell in deiner Umgebung zu sehen.'; 
-        
-        // 6. Events hinzufügen
-        
-        // Poster ausblenden, AR-UI einblenden, Audio starten, sobald AR/XR startet
-        modelViewer.addEventListener('ar-status', (event) => {
-            if (event.detail.status === 'session-started') {
-                poster.style.display = 'none';
-                arUI.style.display = 'block';
-                toggleAudio(true);
-            } else if (event.detail.status === 'session-ended') {
-                arUI.style.display = 'none';
-                toggleAudio(false);
-                poster.style.display = 'flex';
-                if (isRecording) stopRecording(); // ✅ KORREKTUR: Stoppt die Aufnahme, wenn AR beendet wird
-            }
-        });
-        
-        // Event-Listener für den Shutter-Button
-        btnShutter.addEventListener('click', (e) => {
-            if (isRecording) {
-                stopRecording(); // ✅ KORREKTUR: Ruft stopRecording ohne ID auf
-            } else {
-                takeScreenshot();
-            }
-        });
-
-        btnShutter.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            if (isRecording) return; // Nicht starten, wenn bereits aufnimmt
-            
-            // Check, ob AR-Session aktiv ist
-            if (modelViewer.hasARSession) {
-                isRecording = true;
-                btnShutter.classList.add('recording');
-                startRecordingTimer(); // Startet den Timer und setzt die globale ID
-                console.log("Videoaufnahme gestartet (simuliert).");
-            } else {
-                console.warn("Videoaufnahme nur in aktiver AR-Sitzung möglich.");
-            }
-        });
-
-        // Klick-Handling (URL-Weiterleitung)
-        modelViewer.addEventListener('click', (event) => {
-            if (!cfg.clickableNodes || cfg.clickableNodes.length === 0) return;
-            
-            // Überprüfe, ob auf das Modell oder den Canvas geklickt wurde
-            // Anmerkung: Hotspots müssen in model-viewer über eigene HTML-Elemente gelöst werden.
-            if (event.detail.target === modelViewer || event.detail.target.tagName === 'CANVAS') {
-                const clickable = cfg.clickableNodes[0]; 
-                
-                if (clickable && clickable.url) {
-                    // Prüfen, ob eine AR-Session aktiv ist
-                    const isARActive = modelViewer.matches(':--ar-session'); 
-                    
-                    if (isARActive) {
-                         // In AR-Session: Stoppen und dann öffnen
-                         modelViewer.stopAR();
-                         setTimeout(() => window.open(clickable.url, '_blank'), 500); 
-                    } else {
-                        // Im 3D-Modus sofort öffnen
-                        window.open(clickable.url, '_blank');
-                    }
-                }
-            }
-        });
-        
-    } catch (error) {
-        displayError(error.message);
-    }
-}
-
-// Initialer Start des Ladevorgangs
-document.addEventListener('DOMContentLoaded', () => {
-    if (!modelViewer) {
-        displayError('model-viewer Element fehlt.');
-        return;
-    }
-    
-    // Setzt das initial benötigte CSS für den Y-Offset (wird auf HTML-Root gesetzt)
-    document.documentElement.style.setProperty('--model-vertical-offset', '0'); 
-    
-    // Sicherstellen, dass die Poster-ID's gesetzt sind (falls nicht in der Markup vorhanden)
-    if(!document.getElementById('posterTitle') && document.querySelector('#poster-inner h1')) {
-        document.querySelector('#poster-inner h1').id = 'posterTitle';
-    }
-    if(!document.getElementById('posterText') && document.querySelector('#poster-inner p')) {
-        document.querySelector('#poster-inner p').id = 'posterText';
-    }
-
-    // START AR Button Handler
-    startArButton.onclick = () => {
-        modelViewer.activateAR();
-        startArButton.disabled = true; 
-        
-        // Füge einen Listener hinzu, um den Button bei Fehler freizugeben
-        modelViewer.addEventListener('ar-status', (event) => {
-            if (event.detail.status === 'failed' || event.detail.status === 'not-presenting') {
-                startArButton.disabled = false;
-            }
-        }, { once: true }); // Nur einmal auslösen
-    }
-    
-    // Startet das Laden
-    loadScene();
-});
-  </script>
-
+      loadScene();
+    });
+  </script>
 </body>
 </html>
