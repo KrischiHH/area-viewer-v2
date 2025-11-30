@@ -1,5 +1,6 @@
 // @ts-check
-// Erweiterter modularer Viewer mit Audio, Mute, Screenshot und Aufnahme (simuliert).
+// Erweiterter modularer Viewer mit Audio, Mute, Screenshot, Aufnahme (simuliert)
+// und Hotspots basierend auf clickableNodes inkl. Positionsdaten.
 
 /**
  * Fetch mit Timeout und AbortError-Erkennung.
@@ -39,28 +40,53 @@ async function loadSceneConfig(sceneId, workerBase) {
 }
 
 /**
- * Erstellt Hotspots aus clickableNodes (falls vorhanden).
+ * Erzeugt einen slug aus einem Label für den Slot-Namen.
+ * @param {string} label
+ */
+function slugify(label) {
+  return (label || 'hotspot')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g,'-')
+    .replace(/^-+|-+$/g,'');
+}
+
+/**
+ * Erstellt Hotspots aus clickableNodes (inkl. Position).
  * @param {HTMLElement} mvEl
- * @param {Array<{label:string,url:string}>} clickableNodes
+ * @param {Array<{label:string,url:string,position?:{x:number,y:number,z:number}}>} clickableNodes
  */
 function createHotspotsFromClickableNodes(mvEl, clickableNodes) {
   if (!Array.isArray(clickableNodes) || clickableNodes.length === 0) return;
 
   clickableNodes.forEach((node, idx) => {
     if (!node.url) return;
-    const slotName = `hotspot-${(node.label || 'link'+idx)
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g,'-')
-      .replace(/^-+|-+$/g,'')}`;
+
+    // Position prüfen
+    if (!node.position || typeof node.position.x !== 'number' || typeof node.position.y !== 'number' || typeof node.position.z !== 'number') {
+      console.warn('Hotspot ohne gültige Position übersprungen:', node);
+      return;
+    }
+
+    const slotName = `hotspot-${slugify(node.label || ('link'+idx))}`;
 
     const hotspot = document.createElement('button');
     hotspot.setAttribute('slot', slotName);
     hotspot.className = 'Hotspot';
     hotspot.textContent = node.label || `Link ${idx+1}`;
+
+    // model-viewer expects data-position="x y z" (Meter)
+    hotspot.setAttribute('data-position', `${node.position.x} ${node.position.y} ${node.position.z}`);
+    // Optional: Normal nach oben – kann später erweitert werden
+    hotspot.setAttribute('data-normal', '0 1 0');
+
+    // Optional: AR-spezifische Klasse bei Session aktiv halten
     hotspot.addEventListener('click', (e) => {
       e.stopPropagation();
       window.open(node.url, '_blank');
+      // Falls du beim Klick AR beenden willst:
+      // mvEl.dismissAR?.();
     });
+
     mvEl.appendChild(hotspot);
   });
 }
@@ -244,7 +270,7 @@ async function initializeViewer(sceneId, workerBase) {
     mvEl.setAttribute('exposure', String(cfg.exposure));
   }
 
-  // Hotspots aus clickableNodes
+  // Hotspots aus clickableNodes inklusive Positionen
   createHotspotsFromClickableNodes(mvEl, cfg.clickableNodes);
 
   // Audio init
@@ -282,11 +308,14 @@ async function initializeViewer(sceneId, workerBase) {
       poster && (poster.style.display = 'none');
       arUI && (arUI.style.display = 'block');
       toggleAudio(true);
+      // Hotspots visuell anpassen (optional)
+      mvEl.querySelectorAll('.Hotspot').forEach(h => h.classList.add('in-ar'));
     } else if (status === 'session-ended') {
       arSessionActive = false;
       arUI && (arUI.style.display = 'none');
       toggleAudio(false);
       poster && (poster.style.display = 'flex');
+      mvEl.querySelectorAll('.Hotspot').forEach(h => h.classList.remove('in-ar'));
       if (isRecording) stopRecording();
     } else if (status === 'failed') {
       arSessionActive = false;
@@ -317,9 +346,12 @@ async function initializeViewer(sceneId, workerBase) {
     }
   });
 
-  // Vereinfachter Klick für ersten Link (falls keine Hotspots genutzt werden)
+  // Vereinfachter globaler Klick auf Modell (Fallback, falls keine Hotspots)
   mvEl.addEventListener('click', () => {
     if (!cfg.clickableNodes || cfg.clickableNodes.length === 0) return;
+    // Öffne den ersten Link nur, wenn keine Hotspots erstellt wurden (Fallback)
+    const anyHotspot = mvEl.querySelector('.Hotspot');
+    if (anyHotspot) return; // Hotspots übernehmen Interaktion
     const node = cfg.clickableNodes[0];
     if (node?.url) {
       if (arSessionActive) {
