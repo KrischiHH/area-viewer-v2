@@ -1,8 +1,8 @@
 import { initCore, loadConfig, configureModel } from './core.js';
 import { initUI, showLoading, hideLoading, showPoster, hidePoster, bindARStatus } from './ui.js';
-import { initAudio, toggleAudio } from './audio.js';
+import { initAudio, toggleAudio, pauseAudioOnHide } from './audio.js';
 import { initHotspots } from './hotspots.js';
-import { initRecording } from './recording.js';
+import { initRecording, stopRecordingOnARSessionEnd } from './recording.js';
 
 let state = {
   cfg: null,
@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.cfg = await loadConfig(state.sceneId, state.workerBase);
     configureModel(state.cfg, state.sceneId, state.workerBase);
     initAudio(state);
+    pauseAudioOnHide();
     initHotspots(state);
     initRecording(state);
     hideLoading();
@@ -58,6 +59,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.arSessionActive = false;
       showPoster(state);
       toggleAudio(false);
+      stopRecordingOnARSessionEnd();
     },
     onFailed(msg) {
       state.arSessionActive = false;
