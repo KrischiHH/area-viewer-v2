@@ -1,12 +1,12 @@
 import { getPersistentAudioElement } from './audio.js';
 
 // Verantwortlich für Screenshot & echte Videoaufnahme
-
 let recTimer = 0;
 let simulatedRecordingId = null;
 let mediaRecorder = null;
 let recordedChunks = [];
 let isRecordingReal = false;
+let realTimerId = null;
 
 export function initRecording(state) {
   const btnShutter = document.getElementById('btn-shutter');
@@ -25,9 +25,8 @@ export function initRecording(state) {
       if (isRecordingReal || simulatedRecordingId) {
         stopAllRecording(recInfo, btnRecord);
       } else {
-        // Versuche echte Aufnahme, sonst Fallback
         if (canRecordReal(mvEl)) {
-          startRealRecording(mvEl, recInfo, btnRecord, state);
+          startRealRecording(mvEl, recInfo, btnRecord);
         } else {
           console.warn('MediaRecorder nicht verfügbar → Fallback Timer.');
           startSimulatedRecording(recInfo, btnRecord);
@@ -35,6 +34,13 @@ export function initRecording(state) {
       }
     });
   }
+
+  // Cleanup bei Tab-Verlassen
+  window.addEventListener('beforeunload', () => {
+    if (isRecordingReal || simulatedRecordingId) {
+      try { stopAllRecording(recInfo, btnRecord); } catch(_) {}
+    }
+  });
 }
 
 /* ---------- Screenshot ---------- */
@@ -85,7 +91,7 @@ function formatTime(seconds) {
 }
 
 /* ---------- Echte Aufnahme ---------- */
-function startRealRecording(mvEl, recInfo, btnRecord, state) {
+function startRealRecording(mvEl, recInfo, btnRecord) {
   const canvas = mvEl.shadowRoot.querySelector('canvas');
   if (!canvas) {
     console.warn('Kein Canvas für Aufnahme gefunden → Fallback.');
@@ -93,11 +99,9 @@ function startRealRecording(mvEl, recInfo, btnRecord, state) {
     return;
   }
 
-  // 30 FPS Stream
   const stream = canvas.captureStream(30);
-
-  // Audio hinzufügen (persistentes AudioElement)
   let finalStream = stream;
+
   const persistentAudio = getPersistentAudioElement();
   if (persistentAudio) {
     try {
@@ -114,13 +118,11 @@ function startRealRecording(mvEl, recInfo, btnRecord, state) {
 
   const mimeTypeCandidates = [
     'video/webm;codecs=vp8',
-    'video/webm',
+    'video/webm'
   ];
   let chosen = '';
   for (const c of mimeTypeCandidates) {
-    if (MediaRecorder.isTypeSupported(c)) {
-      chosen = c; break;
-    }
+    if (MediaRecorder.isTypeSupported(c)) { chosen = c; break; }
   }
   if (!chosen) {
     console.warn('Kein unterstützter WebM Codec gefunden → Fallback Simulation.');
@@ -143,11 +145,10 @@ function startRealRecording(mvEl, recInfo, btnRecord, state) {
   recInfo.style.display = 'flex';
   btnRecord.classList.add('recording');
 
-  const timer = setInterval(() => {
+  realTimerId = setInterval(() => {
     recTimer++;
     recInfo.textContent = formatTime(recTimer);
     if (recTimer >= 60) {
-      clearInterval(timer);
       stopAllRecording(recInfo, btnRecord);
     }
   }, 1000);
@@ -156,6 +157,10 @@ function startRealRecording(mvEl, recInfo, btnRecord, state) {
     if (e.data.size > 0) recordedChunks.push(e.data);
   };
   mediaRecorder.onstop = () => {
+    if (realTimerId) {
+      clearInterval(realTimerId);
+      realTimerId = null;
+    }
     const blob = new Blob(recordedChunks, { type: chosen });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -165,6 +170,7 @@ function startRealRecording(mvEl, recInfo, btnRecord, state) {
     URL.revokeObjectURL(url);
     isRecordingReal = false;
   };
+
   mediaRecorder.start();
 }
 
@@ -172,6 +178,10 @@ function stopAllRecording(recInfo, btnRecord) {
   if (simulatedRecordingId) {
     clearInterval(simulatedRecordingId);
     simulatedRecordingId = null;
+  }
+  if (realTimerId) {
+    clearInterval(realTimerId);
+    realTimerId = null;
   }
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop();
