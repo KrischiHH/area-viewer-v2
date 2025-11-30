@@ -5,29 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
   <title>ARea Viewer – Surface AR</title>
 
-  <!-- model-viewer -->
+  <!-- model-viewer Library -->
   <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
 
   <style>
     :root {
       color-scheme: dark light;
-      /* Variable für vertikalen Offset (nur im normalen 3D Viewer wirksam) */
-      --model-vertical-offset: 0px;
+      --model-vertical-offset: 0px; /* nur für 3D-Modus */
     }
     *, *::before, *::after { box-sizing: border-box; }
     html, body {
       margin: 0; height: 100%;
-      background: #000 !important;
+      background: #000;
       font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
       overscroll-behavior: none;
       touch-action: manipulation;
     }
 
-    /* Poster Overlay */
+    /* Poster Overlay vor AR-Start */
     #poster {
-      position: fixed; inset: 0; display: flex;
-      align-items: center; justify-content: center;
-      background: #05070c; z-index: 9999; color: #fff;
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: #05070c; z-index: 20; color: #fff;
       text-align: center; padding: 24px;
     }
     #poster-inner {
@@ -36,9 +35,8 @@
       box-shadow: 0 18px 40px rgba(0,0,0,0.6);
       border: 1px solid rgba(255,255,255,0.08);
     }
-    #posterImage { width: 100%; max-height: 220px; object-fit: cover; border-radius: 16px; display: none; margin-bottom: 16px; background:#111; }
-    #poster h1 { font-size: 22px; margin: 0 0 8px; }
-    #poster p { margin: 0 0 16px; font-size: 14px; opacity: 0.9; }
+    #posterTitle { font-size: 22px; margin: 0 0 8px; }
+    #posterText { margin: 0 0 16px; font-size: 14px; opacity: 0.9; }
     #startAr {
       appearance: none; border: none; border-radius: 999px;
       padding: 10px 22px; font-size: 15px; font-weight: 500;
@@ -48,79 +46,79 @@
       transition: transform .25s;
     }
     #startAr:active { transform: scale(.94); }
-    #startAr[disabled]{ opacity: .55; cursor: wait; }
+    #startAr[disabled]{ opacity:.55; cursor: wait; }
 
-    /* model-viewer Host */
+    /* Ladeanzeige */
+    #loading-status {
+      position: fixed;
+      inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; color: #fff;
+      background: #05070c;
+      z-index: 10;
+    }
+
+    /* Container für 3D/AR */
+    #ar-container {
+      width: 100%; height: 100%;
+      position: relative;
+      background: #000;
+    }
+
     model-viewer {
-      position: fixed; inset: 0; width: 100vw; height: 100svh; display: block;
-      background: #000 !important; z-index: 1;
-      /* 3D-Viewer Offset (AR ignoriert CSS-Transforms) */
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100svh;
+      display: block;
+      background: #000;
       transform: translateY(var(--model-vertical-offset));
     }
 
-    /* Fehleranzeige */
-    #err {
-      position: fixed; left: 12px; top: 12px; z-index: 10000;
-      background: #b00020; color: #fff; padding: 8px 10px; border-radius: 8px;
-      display: none; font: 12px/1.35 monospace;
-      max-width: min(92vw, 680px); white-space: pre-wrap;
-    }
-
-    /* AR UI */
+    /* AR UI Overlay */
     #ar-ui {
-      position: fixed; inset: 0; z-index: 9000; display: none;
-      pointer-events: none; font-family: inherit;
+      position: fixed; inset: 0; z-index: 30;
+      display: none; pointer-events: none;
+      font-family: inherit;
     }
     .bottom-bar {
-      position: absolute; left: 0; right: 0;
+      position:absolute; left:0; right:0;
       bottom: max(env(safe-area-inset-bottom),16px);
-      display: flex; align-items: center; justify-content: center;
-      gap: 22px; pointer-events: auto; padding: 0 18px;
+      display:flex; align-items:center; justify-content:center;
+      gap:22px; pointer-events:auto; padding:0 18px;
     }
 
-    /* Galerie Button */
-    #btn-gallery {
-      width: 54px; height: 54px; border-radius: 14px; overflow: hidden;
-      border: 1px solid rgba(255,255,255,.25);
-      background: #0b0f16 center/cover no-repeat;
-      box-shadow: 0 6px 16px rgba(0,0,0,.6);
-    }
-    #btn-gallery img { width:100%; height:100%; object-fit:cover; display:block; }
-    #btn-gallery:empty::after {
-      content: ""; display: block; width: 100%; height: 100%;
-      background: linear-gradient(135deg,#2a3a52,#253044);
+    /* Mute Button */
+    #btn-mute {
+      appearance:none; border:none; cursor:pointer;
+      width:44px; height:44px; border-radius:50%;
+      background:rgba(30,30,30,0.6); color:#fff; font-size:18px;
+      display:none; align-items:center; justify-content:center;
+      backdrop-filter:blur(4px);
+      border:1px solid rgba(255,255,255,0.2);
+      box-shadow:0 4px 12px rgba(0,0,0,0.4);
     }
 
     /* Shutter Button */
     #btn-shutter {
-      appearance: none; border: none; cursor: pointer;
-      width: 78px; height: 78px; border-radius: 50%;
-      background: radial-gradient(circle at 50% 50%, #fff 60%, #dfe6f2 100%);
-      box-shadow: 0 8px 22px rgba(0,0,0,.55);
-      position: relative; overflow: hidden;
-      transition: transform .25s;
+      appearance:none; border:none; cursor:pointer;
+      width:78px; height:78px; border-radius:50%;
+      background:radial-gradient(circle at 50% 50%,#fff 60%,#dfe6f2 100%);
+      box-shadow:0 8px 22px rgba(0,0,0,.55);
+      position:relative; overflow:hidden;
+      transition:transform .25s;
     }
     #btn-shutter:active { transform: scale(.92); }
     #btn-shutter.recording {
-      background: radial-gradient(circle at 50% 50%, #ff3b30 60%, #d7261b 100%);
-      animation: pulse 1.1s ease-in-out infinite;
+      background:radial-gradient(circle at 50% 50%,#ff3b30 60%,#d7261b 100%);
+      animation:pulse 1.1s ease-in-out infinite;
     }
-    #btn-shutter.snap { animation: snap-blink 180ms ease-out; }
-
-    /* Mute Button */
-    #btn-mute {
-      appearance: none; border: none; cursor: pointer;
-      width: 44px; height: 44px; border-radius: 50%;
-      background: rgba(30,30,30,0.6); color:#fff; font-size:18px;
-      display: flex; align-items: center; justify-content: center;
-      backdrop-filter: blur(4px);
-      border: 1px solid rgba(255,255,255,0.2);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-    }
+    #btn-shutter.snap { animation:snap-blink 180ms ease-out; }
 
     @keyframes pulse { 0%{transform:scale(1)}50%{transform:scale(1.06)}100%{transform:scale(1)} }
     @keyframes snap-blink { 0%{transform:scale(1)}50%{transform:scale(.9)}100%{transform:scale(1)} }
 
+    /* Aufnahmezeit */
     #rec-info {
       position:absolute;
       bottom: calc(max(env(safe-area-inset-bottom),16px) + 96px);
@@ -129,317 +127,76 @@
       display:none; align-items:center; gap:4px;
     }
     #rec-info::before { content:"●"; font-size:10px; animation:pulse 1s infinite; }
+
+    /* Platzhalter Galerie (optional für Thumbnails später) */
+    #btn-gallery {
+      width:54px; height:54px; border-radius:14px; overflow:hidden;
+      border:1px solid rgba(255,255,255,.25);
+      background:#0b0f16 center/cover no-repeat;
+      box-shadow:0 6px 16px rgba(0,0,0,.6);
+    }
+    #btn-gallery:empty::after {
+      content:""; display:block; width:100%; height:100%;
+      background:linear-gradient(135deg,#2a3a52,#253044);
+    }
+
+    /* Hotspots */
+    .Hotspot {
+      background: rgba(30,30,30,0.75);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.35);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .Hotspot:hover { background: rgba(60,60,60,0.85); }
+
+    /* Fehleranzeige */
+    #err {
+      position: fixed; left: 12px; top: 12px; z-index: 40;
+      background: #b00020; color: #fff; padding: 8px 10px; border-radius: 8px;
+      display: none; font: 12px/1.35 monospace;
+      max-width: min(92vw,680px); white-space: pre-wrap;
+    }
   </style>
 </head>
 <body>
 
-  <model-viewer id="modelViewer"
-    loading="eager"
-    poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-    disable-tap>
-  </model-viewer>
-
+  <!-- Poster vor Start -->
   <div id="poster">
     <div id="poster-inner">
-      <img id="posterImage" src="" alt="Vorschaubild">
       <h1 id="posterTitle">3D / AR Erlebnis</h1>
-      <p id="posterText">Tippe auf Start AR, um das Modell in deiner Umgebung zu sehen.</p>
-      <button id="startAr">START AR</button>
+      <p id="posterText">Tippe auf START AR, um das Modell in deiner Umgebung zu sehen.</p>
+      <button id="startAr" type="button">START AR</button>
     </div>
   </div>
 
+  <!-- Ladeanzeige -->
+  <div id="loading-status">Lade Szene…</div>
+
+  <!-- Fehleranzeige -->
+  <div id="err"></div>
+
+  <!-- Container für Viewer -->
+  <div id="ar-container" style="display:none;">
+    <model-viewer id="ar-scene-element"
+      loading="eager"
+      disable-tap>
+    </model-viewer>
+  </div>
+
+  <!-- AR UI (nur während Session sichtbar) -->
   <div id="ar-ui">
     <div class="bottom-bar">
-      <button id="btn-mute" style="display:none;">🔊</button>
+      <button id="btn-mute" aria-label="Audio stummschalten / aktivieren">🔊</button>
       <div id="btn-gallery"></div>
-      <button id="btn-shutter" aria-label="Shutter"></button>
+      <button id="btn-shutter" aria-label="Screenshot / Aufnahme"></button>
       <div id="rec-info">00:00</div>
     </div>
   </div>
 
-  <div id="err"></div>
-
-  <script type="module">
-    // -----------------------------------------------------------
-    // Hilfsfunktion: Fetch mit Timeout & sauberem Abort Handling
-    // -----------------------------------------------------------
-    async function fetchWithTimeout(resource, options = {}) {
-      const { timeoutMs = 15000 } = options;
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), timeoutMs);
-
-      try {
-        const response = await fetch(resource, { ...options, signal: controller.signal });
-        return response;
-      } catch (error) {
-        if (error.name === 'AbortError') {
-          throw new Error(`Timeout (${timeoutMs} ms) für Anfrage: ${resource}`);
-        }
-        throw error;
-      } finally {
-        clearTimeout(id);
-      }
-    }
-
-    // Globale Zustände
-    let arAudio = null;
-    let cfg = null;
-    let isAudioMuted = false;
-    let isRecording = false;
-    let recTimer = 0;
-    let recordingTimerId = null;
-    let arSessionActive = false; // AR-Zustand über Events pflegen
-
-    // DOM Referenzen
-    const modelViewer = document.getElementById('modelViewer');
-    const poster = document.getElementById('poster');
-    const arUI = document.getElementById('ar-ui');
-    const btnMute = document.getElementById('btn-mute');
-    const btnShutter = document.getElementById('btn-shutter');
-    const recInfo = document.getElementById('rec-info');
-    const errEl = document.getElementById('err');
-    const startArButton = document.getElementById('startAr');
-
-    function displayError(message) {
-      console.error('VIEWER ERROR:', message);
-      errEl.textContent = 'FEHLER: ' + message;
-      errEl.style.display = 'block';
-    }
-
-    function updateMuteButtonUI() {
-      btnMute.textContent = isAudioMuted ? '🔇' : '🔊';
-    }
-
-    function initAudio(audioCfg, sceneId, workerBase) {
-      if (!audioCfg || !audioCfg.url) {
-        btnMute.style.display = 'none';
-        return;
-      }
-      const audioUrl = `${workerBase}/scenes/${sceneId}/${audioCfg.url}`;
-      arAudio = new Audio(audioUrl);
-      arAudio.loop = !!audioCfg.loop;
-      arAudio.volume = audioCfg.volume !== undefined ? audioCfg.volume : 0.8;
-
-      btnMute.style.display = 'flex';
-      updateMuteButtonUI();
-      btnMute.onclick = () => {
-        isAudioMuted = !isAudioMuted;
-        arAudio.muted = isAudioMuted;
-        updateMuteButtonUI();
-      };
-    }
-
-    function toggleAudio(play) {
-      if (!arAudio) return;
-      if (play) {
-        if (!isAudioMuted) {
-          const delay = cfg.audio?.delaySeconds || 0;
-            if (delay > 0) {
-              setTimeout(() => arAudio.play().catch(e => console.warn('Audio play failed:', e)), delay * 1000);
-            } else {
-              arAudio.play().catch(e => console.warn('Audio play failed:', e));
-            }
-        }
-      } else {
-        arAudio.pause();
-        arAudio.currentTime = 0;
-      }
-    }
-
-    // Y-Offset nur im 3D-Modus (visuell)
-    function applyYOffset(yOffset) {
-      if (yOffset === undefined || yOffset === null) return;
-      // Beispiel: 1 "Meter" ~ 100px – heuristisch; anpassbar
-      const px = (-yOffset * 100).toFixed(0) + 'px';
-      document.documentElement.style.setProperty('--model-vertical-offset', px);
-      console.log(`Y-Offset angewandt (nur 3D Ansicht): ${px}`);
-    }
-
-    // Timer- / Aufnahme-Logik (Simulation)
-    function formatTime(seconds) {
-      const min = String(Math.floor(seconds / 60)).padStart(2,'0');
-      const sec = String(seconds % 60).padStart(2,'0');
-      return `${min}:${sec}`;
-    }
-
-    function startRecordingTimer() {
-      recTimer = 0;
-      recInfo.textContent = formatTime(recTimer);
-      recInfo.style.display = 'flex';
-      btnShutter.classList.add('recording');
-      recordingTimerId = setInterval(() => {
-        recTimer++;
-        recInfo.textContent = formatTime(recTimer);
-        if (recTimer >= 60) {
-          stopRecording();
-        }
-      }, 1000);
-    }
-
-    function stopRecording() {
-      if (recordingTimerId) {
-        clearInterval(recordingTimerId);
-        recordingTimerId = null;
-      }
-      isRecording = false;
-      btnShutter.classList.remove('recording');
-      recInfo.style.display = 'none';
-      console.log("Videoaufnahme gestoppt (simuliert).");
-    }
-
-    function takeScreenshot() {
-      btnShutter.classList.add('snap');
-      setTimeout(() => btnShutter.classList.remove('snap'), 300);
-
-      if (!modelViewer.toBlob) {
-        console.warn('toBlob() nicht unterstützt in dieser model-viewer Version.');
-        return;
-      }
-      modelViewer.toBlob({ mimeType: 'image/png' })
-        .then(blob => {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'ARea_Screenshot.png';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        })
-        .catch(e => console.error('Screenshot fehlgeschlagen:', e));
-    }
-
-    async function loadScene() {
-      try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const sceneId = urlParams.get('scene');
-        const workerBase = urlParams.get('base');
-
-        if (!sceneId || !workerBase) {
-          throw new Error('Fehlende URL-Parameter (scene/base).');
-        }
-
-        const sceneConfigUrl = `${workerBase}/scenes/${sceneId}/scene.json`;
-        const response = await fetchWithTimeout(sceneConfigUrl, { timeoutMs: 15000 });
-        if (!response.ok) throw new Error(`Laden von scene.json fehlgeschlagen: ${response.status}`);
-
-        cfg = await response.json();
-
-        if (!cfg.model || !cfg.model.url) {
-          throw new Error('Kein 3D-Modell in der Konfiguration gefunden.');
-        }
-
-        // Modell setzen
-        const modelUrl = `${workerBase}/scenes/${sceneId}/${cfg.model.url}`;
-        modelViewer.setAttribute('src', modelUrl);
-        modelViewer.setAttribute('alt', cfg.meta?.title || '3D-Modell');
-        modelViewer.setAttribute('shadow-intensity', '1');
-        modelViewer.setAttribute('camera-controls', '');
-        modelViewer.setAttribute('auto-rotate', '');
-        modelViewer.setAttribute('ar', '');
-        modelViewer.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
-        modelViewer.setAttribute('interaction-prompt', 'none');
-        modelViewer.setAttribute('auto-rotate-delay', '1000');
-        modelViewer.setAttribute('disable-tap', '');
-
-        // Audio
-        initAudio(cfg.audio, sceneId, workerBase);
-
-        // Y-Offset (nur visuell im Nicht-AR Modus)
-        if (typeof cfg.model.yOffset === 'number') {
-          applyYOffset(cfg.model.yOffset);
-        }
-
-        // Poster-Text aktualisieren
-        const posterTitle = document.getElementById('posterTitle');
-        const posterText = document.getElementById('posterText');
-        if (posterTitle) posterTitle.textContent = cfg.meta?.title || 'Augmented Reality Erlebnis';
-        if (posterText) posterText.textContent = 'Tippe auf START AR, um das Modell in deiner Umgebung zu sehen.';
-
-        // AR Status-Events
-        modelViewer.addEventListener('ar-status', (event) => {
-          const status = event.detail.status;
-          if (status === 'session-started') {
-            arSessionActive = true;
-            poster.style.display = 'none';
-            arUI.style.display = 'block';
-            toggleAudio(true);
-          } else if (status === 'session-ended') {
-            arSessionActive = false;
-            arUI.style.display = 'none';
-            toggleAudio(false);
-            poster.style.display = 'flex';
-            if (isRecording) stopRecording();
-          } else if (status === 'failed') {
-            arSessionActive = false;
-            startArButton.disabled = false;
-            displayError('AR konnte nicht gestartet werden.');
-          }
-        });
-
-        // Shutter: Linksklick = Screenshot / Rechtsklick (Kontextmenü) = Aufnahme starten
-        btnShutter.addEventListener('click', () => {
-          if (isRecording) {
-            stopRecording();
-          } else {
-            takeScreenshot();
-          }
-        });
-
-        btnShutter.addEventListener('contextmenu', (e) => {
-          e.preventDefault();
-          if (isRecording) return;
-          if (arSessionActive) {
-            isRecording = true;
-            btnShutter.classList.add('recording');
-            startRecordingTimer();
-            console.log("Videoaufnahme gestartet (simuliert).");
-          } else {
-            console.warn("Videoaufnahme nur während aktiver AR-Session möglich.");
-          }
-        });
-
-        // Klickbare Nodes (vereinfachter Ansatz: Öffne erstes Link-Objekt)
-        modelViewer.addEventListener('click', (e) => {
-          if (!cfg.clickableNodes || cfg.clickableNodes.length === 0) return;
-          // Wir nehmen exemplarisch den ersten Eintrag
-          const node = cfg.clickableNodes[0];
-          if (node?.url) {
-            if (arSessionActive) {
-              // Beende AR sauber und öffne dann Link
-              modelViewer.dismissAR?.();
-              setTimeout(() => window.open(node.url, '_blank'), 600);
-            } else {
-              window.open(node.url, '_blank');
-            }
-          }
-        });
-
-      } catch (error) {
-        displayError(error.message);
-      }
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-      if (!modelViewer) {
-        displayError('model-viewer Element fehlt.');
-        return;
-      }
-
-      document.documentElement.style.setProperty('--model-vertical-offset', '0px');
-
-      // START AR Button
-      startArButton.onclick = () => {
-        startArButton.disabled = true;
-        modelViewer.activateAR();
-        // Fallback: Falls kein Session-Start kommt, nach 5s wieder aktivieren
-        setTimeout(() => {
-          if (!arSessionActive) startArButton.disabled = false;
-        }, 5000);
-      };
-
-      loadScene();
-    });
-  </script>
+  <!-- Externes Viewer-Skript -->
+  <script type="module" src="./js/viewer.js"></script>
 </body>
 </html>
