@@ -1,186 +1,186 @@
-// js/viewer.js
+// @ts-check
 
-// Hilfsfunktion zum Abrufen der URL-Parameter
-function getUrlParams() {
-    const params = new URLSearchParams(window.location.search);
-    return {
-        sceneId: params.get('scene'),
-        base: params.get('base'),
-    };
+/**
+ * Holt die Szene-Konfiguration von der Worker-Basis-URL.
+ * @param {string} sceneId
+ * @param {string} workerBase
+ * @returns {Promise<any>}
+ */
+async function loadSceneConfig(sceneId, workerBase) {
+    // KORRIGIERTER PFAD: Einheitlich /scenes/ (Plural) verwenden, um mit dem Worker-Routing übereinzustimmen.
+    const sceneConfigUrl = `${workerBase}/scenes/${sceneId}/scene.json`;
+    
+    // Die fetchWithTimeout-Funktion muss aus publish-utils.js im Viewer verfügbar sein.
+    // Wir setzen einen konservativen Timeout für die Konfigurationsdatei.
+    const config = await fetchWithTimeout(sceneConfigUrl, {}, 15000)
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`Fehler beim Laden der Szene-Konfiguration: ${res.status} ${res.statusText}`);
+            }
+            return res.json();
+        })
+        .catch(error => {
+            console.error("Ladefehler für Scene-Config:", error);
+            throw new Error(`Konfigurationsdatei nicht gefunden oder Netzwerkfehler: ${error.message}`);
+        });
+
+    return config;
 }
 
-// Hauptfunktion zum Laden und Konfigurieren der Szene
-async function loadScene() {
-    const { sceneId, base } = getUrlParams();
-    
-    if (!sceneId || !base) {
-        console.error('Fehlende URL-Parameter: scene und base sind erforderlich.');
-        return;
-    }
-
-    const sceneUrl = `${base}/scene/${sceneId}/scene.json`;
-
+/**
+ * Initialisiert und konfiguriert das <model-viewer>-Element.
+ * @param {string} sceneId
+ * @param {string} workerBase
+ */
+async function initializeViewer(sceneId, workerBase) {
+    let config;
     try {
-        const response = await fetch(sceneUrl);
-        if (!response.ok) {
-            throw new Error(`HTTP-Fehler! Status: ${response.status}`);
-        }
-        const sceneConfig = await response.json();
-        console.log('Szene-Konfiguration geladen:', sceneConfig);
-
-        configureViewer(sceneConfig, base, sceneId);
+        config = await loadSceneConfig(sceneId, workerBase);
     } catch (error) {
-        console.error('Fehler beim Laden der Szene-Konfiguration:', error);
-    }
-}
-
-// Funktion zur Konfiguration des model-viewer und Audio
-function configureViewer(config, base, sceneId) {
-    const arSceneElement = document.getElementById('ar-scene');
-    
-    // Der finale GLB-Pfad
-    const glbUrl = config.model && config.model.url 
-      ? `${base}/scene/${sceneId}/${config.model.url}` 
-      : '';
-
-    if (!glbUrl) {
-        console.error('Keine gültige Modell-URL in der Konfiguration gefunden.');
+        document.getElementById('loading-status').textContent = `Fehler: ${error.message}`;
         return;
     }
 
-    // Setzt die Quelle des Modells
-    arSceneElement.setAttribute('src', glbUrl);
+    const arSceneElement = document.getElementById('ar-scene-element');
     
-    // Setzt AR-Attribute, um den AR-Button zu aktivieren
-    arSceneElement.setAttribute('ar-status-mode', 'entered'); // Zeigt den AR-Button an
-    arSceneElement.setAttribute('ar', '');
+    // Überprüfe, ob das Element vom Typ model-viewer ist
+    if (!arSceneElement || arSceneElement.tagName !== 'MODEL-VIEWER') {
+        document.getElementById('loading-status').textContent = 'Fehler: Model-Viewer Element nicht gefunden oder falsch.';
+        return;
+    }
 
-    // Holt die model-viewer Instanz aus dem Shadow DOM
-    // Muss gewartet werden, bis das Custom Element initialisiert ist
+    // Setze die grundlegenden Attribute basierend auf der Konfiguration
+    const modelUrl = `${workerBase}/scenes/${sceneId}/${config.model.url}`;
+    
+    // Setze das Quellmodell
+    arSceneElement.setAttribute('src', modelUrl);
+
+    // Setze die AR-Attribute
+    arSceneElement.setAttribute('ar', 'true');
+    arSceneElement.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
+    arSceneElement.setAttribute('camera-controls', 'true');
+    arSceneElement.setAttribute('alt', config.model.alt || 'Ein 3D-Modell, das in AR betrachtet werden kann.');
+    arSceneElement.setAttribute('loading', 'eager');
+    arSceneElement.setAttribute('shadow-intensity', '1');
+    arSceneElement.setAttribute('auto-rotate', 'true'); // Füge eine einfache Rotation hinzu, um das Laden zu signalisieren
+
+    // Weitere Attribute aus der Konfiguration übernehmen (falls vorhanden)
+    if (config.environmentImage) {
+        arSceneElement.setAttribute('environment-image', config.environmentImage);
+    }
+    if (config.exposure) {
+        arSceneElement.setAttribute('exposure', config.exposure);
+    }
+    if (config.shadowSoftness) {
+        arSceneElement.setAttribute('shadow-softness', config.shadowSoftness);
+    }
+
+    // Hotspot-Konfiguration (vereinfacht für model-viewer)
+    if (config.annotationData && Array.isArray(config.annotationData)) {
+        config.annotationData.forEach(annotation => {
+            if (annotation.position && annotation.content) {
+                // Erstellen eines Hotspot-Elements
+                const hotspot = document.createElement('button');
+                hotspot.setAttribute('slot', `hotspot-${annotation.label}`); // Verwenden Sie Label als eindeutigen Hotspot-Namen
+                hotspot.setAttribute('data-position', `${annotation.position.x} ${annotation.position.y} ${annotation.position.z}`);
+                hotspot.setAttribute('data-normal', `${annotation.normal ? annotation.normal.x + ' ' + annotation.normal.y + ' ' + annotation.normal.z : '0 0 1'}`);
+                hotspot.setAttribute('class', 'Hotspot');
+
+                // Füge den Inhalt hinzu (z.B. ein Link)
+                hotspot.innerHTML = annotation.content;
+                
+                arSceneElement.appendChild(hotspot);
+            }
+        });
+    }
+
+    // Entfernen des Lade-Status und Anzeigen des AR-Elements
+    document.getElementById('loading-status').style.display = 'none';
+    document.getElementById('ar-container').style.display = 'block';
+    
+    // Event-Listener für das erfolgreiche Laden des Modells
     arSceneElement.addEventListener('load', () => {
-        const modelViewer = arSceneElement.shadowRoot.querySelector('model-viewer');
-
-        if (modelViewer) {
-            // NEU: Y-Offset anwenden (Anti-Schwebe-Fix)
-            if (config.model && typeof config.model.yOffset === 'number') {
-                // Konvertiert den Meter-Offset in eine CSS-Variable für das model-viewer Custom Element
-                const yOffsetCSS = `${-config.model.yOffset}m`;
-                modelViewer.style.setProperty('--ar-scale-device-height', yOffsetCSS);
-                console.log(`Y-Offset-Korrektur angewendet: ${yOffsetCSS}`);
-            }
-            
-            // NEU: Animationen starten
-            modelViewer.setAttribute('autoplay', '');
-
-            // NEU: Clickable Nodes Konfiguration
-            if (config.clickableNodes && Array.isArray(config.clickableNodes)) {
-                // ACHTUNG: Die Logik für klickbare Nodes erfordert möglicherweise detailliertere 
-                // Implementierung im area-webar-scene, aber hier ist die Konfiguration:
-                const annotationData = config.clickableNodes.map(node => ({
-                    // Wir nehmen den Namen als "node" an
-                    name: node.label, 
-                    content: `<a href="${node.url}" target="_blank">Link: ${node.label}</a>`,
-                    // Pin-Position auf dem Bildschirm (zum Beispiel in der Mitte)
-                    position: "0.5 0.5 0.5" 
-                }));
-                // modelViewer.setAttribute('annotations', JSON.stringify(annotationData));
-            }
-        }
+        console.log('3D-Modell erfolgreich geladen.');
+        // Entferne die automatische Rotation, sobald das Modell geladen ist
+        arSceneElement.removeAttribute('auto-rotate'); 
     });
     
-    // NEU: Audio-Konfiguration
-    if (config.audio && config.audio.url) {
-        setupAudio(config.audio, base, sceneId);
+    // Fehlerbehandlung
+    arSceneElement.addEventListener('error', (e) => {
+        console.error('model-viewer Ladefehler:', e);
+        document.getElementById('loading-status').textContent = 'Fehler beim Laden des 3D-Modells. URL oder Format falsch.';
+        document.getElementById('loading-status').style.display = 'block';
+        document.getElementById('ar-container').style.display = 'none';
+    });
+
+
+    // --- AR-Modus Start ---
+    const arButton = document.getElementById('ar-button');
+    if (arButton) {
+        arButton.addEventListener('click', () => {
+            // Starte den AR-Modus programmatisch, falls das native <button slot="ar-button"> nicht funktioniert.
+            // Der model-viewer sollte das automatisch übernehmen, wenn das 'ar'-Attribut gesetzt ist.
+            // Dies ist ein Fallback oder zusätzliche Logik.
+            if (arSceneElement.hasAttribute('ar-status') && arSceneElement.getAttribute('ar-status') === 'not-presenting') {
+                 arSceneElement.activateAR();
+            } else {
+                // Das AR-Attribut reicht meistens aus, um den Button zu aktivieren.
+                // Wir lassen das dem model-viewer über.
+                console.log('AR-Aktivierung über model-viewer Button erwartet.');
+            }
+        });
     }
+
+    // --- AR-Modus Skalierung/Korrektur (wie im Bericht erwähnt) ---
+    // model-viewer unterstützt diese CSS-Variable nicht offiziell. Die Lösung ist, die 
+    // Skalierung und Positionierung dem AR-Core/AR-Kit überlassen.
+    // Wenn das Modell bewegungslos ist, liegt es meistens daran, dass das Gerät nicht
+    // in der Lage ist, die Oberfläche zu erkennen (Tracking fehlt).
+    
+    // Die beste Methode ist, das 'scale'-Attribut zu verwenden, um das Modell initial zu verkleinern,
+    // falls es zu groß ist. Wir lassen es hier standardmäßig auf auto.
+
+    // Wenn der AR-Modus erfolgreich gestartet wird (für Debugging):
+    arSceneElement.addEventListener('ar-status', (event) => {
+        if (event.detail.status === 'error') {
+            console.error('AR-Fehler:', event.detail.message);
+            alert(`AR-Fehler: ${event.detail.message}. Stellen Sie sicher, dass Ihr Gerät ARCore/ARKit unterstützt und die Kamera aktiv ist.`);
+        }
+        if (event.detail.status === 'session-started') {
+            console.log('AR-Sitzung erfolgreich gestartet.');
+        }
+    });
 }
 
-// Funktion zur Konfiguration des Audio-Players
-function setupAudio(audioConfig, base, sceneId) {
-    const audioControls = document.getElementById('audio-controls');
-    const audioButton = document.getElementById('audio-button');
-    
-    // Setze die Audio-Steuerung sichtbar
-    audioControls.style.display = 'block';
+// Global verfügbare Helferfunktion (aus publish-utils.js)
+// Notwendig, da der Viewer nicht alle externen Module über einen Build-Schritt zieht.
+function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
 
-    // Pfad zur Audio-Datei
-    const audioUrl = `${base}/scene/${sceneId}/${audioConfig.url}`;
-
-    const audio = new Audio(audioUrl);
-    audio.loop = audioConfig.loop || false;
-    audio.volume = audioConfig.volume || 0.8;
-
-    let isPlaying = false;
-
-    // Startet die Wiedergabe nach Verzögerung
-    const startAudio = () => {
-        if (isPlaying) return;
-        
-        // DelaySeconds anwenden
-        const delayMs = (audioConfig.delaySeconds || 0) * 1000;
-        
-        setTimeout(() => {
-            audio.play().then(() => {
-                isPlaying = true;
-                audioButton.textContent = '🔇'; // Wird gespielt
-            }).catch(e => {
-                console.error('Audio-Wiedergabe fehlgeschlagen (evtl. User-Interaktion erforderlich):', e);
-                // In diesem Fall bleibt es bei 🔊, da es nicht automatisch spielen konnte
-            });
-        }, delayMs);
+    const fullOptions = {
+        ...options,
+        signal: controller.signal
     };
 
-    // Umschalten der Wiedergabe bei Klick
-    audioButton.addEventListener('click', () => {
-        if (isPlaying) {
-            audio.pause();
-            isPlaying = false;
-            audioButton.textContent = '🔊'; // Pausiert
-        } else {
-            // Starte Audio sofort, falls kein Delay gesetzt ist
-            if (!audioConfig.delaySeconds) {
-                audio.play().catch(e => console.error(e));
-                // Der Rest der Logik wird von startAudio nach dem Delay/Play-Versuch übernommen
-            }
-            startAudio();
-        }
-    });
-
-    // Startet die Audio-Wiedergabe, sobald AR aktiviert wird
-    const arSceneElement = document.getElementById('ar-scene');
-    arSceneElement.addEventListener('ar-status', (event) => {
-        if (event.detail.status === 'entered') {
-            startAudio();
-        }
-        if (event.detail.status === 'exited') {
-            audio.pause();
-            isPlaying = false;
-            audioButton.textContent = '🔊';
-        }
-    });
-
-    // Erneutes Starten des Audio nach Ende (falls Loop aktiv)
-    audio.addEventListener('ended', () => {
-        if (audio.loop) {
-            audio.currentTime = 0;
-            startAudio();
-        } else {
-            isPlaying = false;
-            audioButton.textContent = '🔊';
-        }
-    });
-    
-    // Starte Audio beim Laden der Seite (falls der Browser es erlaubt)
-    loadAudio(audio, startAudio);
-}
-
-// Fügt eine Funktion hinzu, um den Play-Versuch beim Laden zu kapseln
-function loadAudio(audio, startAudio) {
-    const arSceneElement = document.getElementById('ar-scene');
-    arSceneElement.addEventListener('load', () => {
-        startAudio();
-    });
+    return fetch(url, fullOptions)
+        .finally(() => {
+            clearTimeout(id);
+        });
 }
 
 
-// Start
-document.addEventListener('DOMContentLoaded', loadScene);
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. URL-Parameter auslesen
+    const params = new URLSearchParams(window.location.search);
+    const sceneId = params.get('scene');
+    const workerBase = params.get('base');
+
+    if (!sceneId || !workerBase) {
+        document.getElementById('loading-status').textContent = 'Fehler: Szene ID oder Worker-Basis-URL fehlt in den Parametern.';
+        return;
+    }
+
+    // 2. Initialisierung starten
+    initializeViewer(sceneId, workerBase);
+});
