@@ -60,7 +60,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       showPoster(state);
       toggleAudio(false);
       stopRecordingOnARSessionEnd();
-      // START AR Button wieder aktivieren für neue Session
       const startBtn = document.getElementById('startAr');
       if (startBtn) startBtn.disabled = false;
     },
