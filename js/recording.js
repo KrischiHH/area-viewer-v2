@@ -1,12 +1,13 @@
 import { getPersistentAudioElement } from './audio.js';
 
-// Verantwortlich für Screenshot & echte Videoaufnahme
+// Screenshot & echte/Simulierte Aufnahme
 let recTimer = 0;
 let simulatedRecordingId = null;
 let mediaRecorder = null;
 let recordedChunks = [];
 let isRecordingReal = false;
 let realTimerId = null;
+let audioCtxRef = null; // Für Cleanup nach echter Aufnahme
 
 export function initRecording(state) {
   const btnShutter = document.getElementById('btn-shutter');
@@ -35,7 +36,6 @@ export function initRecording(state) {
     });
   }
 
-  // Cleanup bei Tab-Verlassen
   window.addEventListener('beforeunload', () => {
     if (isRecordingReal || simulatedRecordingId) {
       try { stopAllRecording(recInfo, btnRecord); } catch(_) {}
@@ -105,11 +105,11 @@ function startRealRecording(mvEl, recInfo, btnRecord) {
   const persistentAudio = getPersistentAudioElement();
   if (persistentAudio) {
     try {
-      const audioCtx = new AudioContext();
-      const source = audioCtx.createMediaElementSource(persistentAudio);
-      const dest = audioCtx.createMediaStreamDestination();
+      audioCtxRef = new AudioContext();
+      const source = audioCtxRef.createMediaElementSource(persistentAudio);
+      const dest = audioCtxRef.createMediaStreamDestination();
       source.connect(dest);
-      source.connect(audioCtx.destination);
+      source.connect(audioCtxRef.destination);
       finalStream = new MediaStream([...stream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
     } catch (e) {
       console.warn('Audiomixing fehlgeschlagen:', e);
@@ -169,6 +169,9 @@ function startRealRecording(mvEl, recInfo, btnRecord) {
     a.click();
     URL.revokeObjectURL(url);
     isRecordingReal = false;
+    // AudioContext schließen zur Freigabe von Ressourcen
+    try { audioCtxRef?.close(); } catch(_) {}
+    audioCtxRef = null;
   };
 
   mediaRecorder.start();
@@ -189,6 +192,8 @@ function stopAllRecording(recInfo, btnRecord) {
   recInfo.style.display = 'none';
   btnRecord.classList.remove('recording');
   isRecordingReal = false;
+  try { audioCtxRef?.close(); } catch(_) {}
+  audioCtxRef = null;
 }
 
 /* ---------- AR Session Ende Cleanup ---------- */
