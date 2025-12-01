@@ -31,7 +31,6 @@ export function initHotspots(state) {
 
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // Sicherheit: noopener/noreferrer
       window.open(node.url, '_blank', 'noopener,noreferrer');
     });
 
