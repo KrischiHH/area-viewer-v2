@@ -28,9 +28,30 @@ export function initUI(state) {
   if (container) container.style.display = 'block';
 
   if (startBtn) {
-    startBtn.onclick = () => {
+    startBtn.onclick = async () => {
       startBtn.disabled = true;
-      mvEl.activateAR();
+      if (!mvEl || typeof mvEl.activateAR !== 'function') {
+        // Fallback bei fehlender AR-Funktion
+        const errEl = document.getElementById('err');
+        if (errEl) {
+          errEl.textContent = 'AR nicht unterstützt (activateAR fehlt).';
+          errEl.style.display = 'block';
+        }
+        startBtn.disabled = false;
+        return;
+      }
+      try {
+        await mvEl.activateAR();
+      } catch (err) {
+        console.warn('AR Start fehlgeschlagen:', err);
+        const errEl = document.getElementById('err');
+        if (errEl) {
+          errEl.textContent = 'AR Start fehlgeschlagen: ' + (err.message || err);
+          errEl.style.display = 'block';
+        }
+        startBtn.disabled = false;
+      }
+      // Sicherheits-Timeout: Reaktivieren falls Session nicht startet
       setTimeout(() => {
         if (!state.arSessionActive) startBtn.disabled = false;
       }, 5000);
@@ -41,6 +62,9 @@ export function initUI(state) {
 export function bindARStatus(state, handlers) {
   const mvEl = document.getElementById('ar-scene-element');
   const arUI = document.getElementById('ar-ui');
+  const startBtn = document.getElementById('startAr');
+
+  if (!mvEl) return;
 
   mvEl.addEventListener('ar-status', (e) => {
     const status = e.detail.status;
@@ -52,9 +76,12 @@ export function bindARStatus(state, handlers) {
       if (arUI) arUI.style.display = 'none';
       handlers.onSessionEnd?.();
       mvEl.querySelectorAll('.Hotspot').forEach(h => h.classList.remove('in-ar'));
+      if (startBtn) startBtn.disabled = false;
     } else if (status === 'failed') {
       if (arUI) arUI.style.display = 'none';
       handlers.onFailed?.(e.detail.message);
+      mvEl.querySelectorAll('.Hotspot').forEach(h => h.classList.remove('in-ar'));
+      if (startBtn) startBtn.disabled = false;
     }
   });
 }
