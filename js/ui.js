@@ -31,10 +31,9 @@ export function initUI(state) {
     startBtn.onclick = async () => {
       startBtn.disabled = true;
       if (!mvEl || typeof mvEl.activateAR !== 'function') {
-        // Fallback bei fehlender AR-Funktion
         const errEl = document.getElementById('err');
         if (errEl) {
-          errEl.textContent = 'AR nicht unterstützt (activateAR fehlt).';
+          errEl.textContent = 'AR wird nicht unterstützt (activateAR fehlt).';
           errEl.style.display = 'block';
         }
         startBtn.disabled = false;
@@ -46,12 +45,12 @@ export function initUI(state) {
         console.warn('AR Start fehlgeschlagen:', err);
         const errEl = document.getElementById('err');
         if (errEl) {
-          errEl.textContent = 'AR Start fehlgeschlagen: ' + (err.message || err);
+          errEl.textContent = 'AR Start fehlgeschlagen: ' + (err?.message || err);
           errEl.style.display = 'block';
         }
         startBtn.disabled = false;
       }
-      // Sicherheits-Timeout: Reaktivieren falls Session nicht startet
+      // Sicherheitsnetz: nach 5s reaktivieren, wenn keine Session aktiv
       setTimeout(() => {
         if (!state.arSessionActive) startBtn.disabled = false;
       }, 5000);
@@ -63,7 +62,6 @@ export function bindARStatus(state, handlers) {
   const mvEl = document.getElementById('ar-scene-element');
   const arUI = document.getElementById('ar-ui');
   const startBtn = document.getElementById('startAr');
-
   if (!mvEl) return;
 
   mvEl.addEventListener('ar-status', (e) => {
