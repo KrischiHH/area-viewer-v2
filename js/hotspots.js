@@ -13,8 +13,13 @@ export function initHotspots(state) {
 
   nodes.forEach((node, idx) => {
     if (!node.url) return;
-    // Minimal: kein Positions-Upgrade (du hast position bereits, wir nutzen sie direkt)
-    if (!node.position) return;
+    if (!node.position ||
+        typeof node.position.x !== 'number' ||
+        typeof node.position.y !== 'number' ||
+        typeof node.position.z !== 'number') {
+      console.warn('Hotspot ohne gültige Position übersprungen:', node);
+      return;
+    }
 
     const slotName = `hotspot-${slugify(node.label || ('link'+idx))}`;
     const btn = document.createElement('button');
@@ -26,7 +31,8 @@ export function initHotspots(state) {
 
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      window.open(node.url, '_blank');
+      // Sicherheit: noopener/noreferrer
+      window.open(node.url, '_blank', 'noopener,noreferrer');
     });
 
     mvEl.appendChild(btn);
