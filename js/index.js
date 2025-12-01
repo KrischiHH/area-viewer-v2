@@ -60,6 +60,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       showPoster(state);
       toggleAudio(false);
       stopRecordingOnARSessionEnd();
+      // START AR Button wieder aktivieren für neue Session
+      const startBtn = document.getElementById('startAr');
+      if (startBtn) startBtn.disabled = false;
     },
     onFailed(msg) {
       state.arSessionActive = false;
@@ -68,6 +71,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         errEl.textContent = 'AR FEHLER: ' + msg;
         errEl.style.display = 'block';
       }
+      const startBtn = document.getElementById('startAr');
+      if (startBtn) startBtn.disabled = false;
     }
   });
 });
