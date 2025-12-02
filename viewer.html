@@ -1,268 +1,342 @@
-<!doctype html>
-<html lang="de">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <title>ARea Viewer – Surface AR</title>
+// js/index.js
+import { initRecording, stopRecordingOnARSessionEnd } from './recording.js';
 
-  <!-- model-viewer Library -->
-  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
-  <!-- Font Awesome für Galerie-Icon -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
-  <!-- FFmpeg.js für WebM -> MP4 -->
-  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/ffmpeg.min.js"></script>
+/**
+ * Fetch mit Timeout und AbortError-Erkennung.
+ * @param {string} url
+ * @param {RequestInit & { timeoutMs?: number }} options
+ * @returns {Promise<Response>}
+ */
+async function fetchWithTimeout(url, options = {}) {
+  const { timeoutMs = 15000 } = options;
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error(`Timeout (${timeoutMs} ms) beim Laden: ${url}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(id);
+  }
+}
 
-  <style>
-    :root {
-      color-scheme: dark light;
-      --model-vertical-offset: 0px;
-    }
-    *, *::before, *::after { box-sizing: border-box; }
-    html, body {
-      margin: 0; height: 100%;
-      background: #000;
-      font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-      overscroll-behavior: none;
-      touch-action: manipulation;
-    }
+/**
+ * Lädt die Szene-Konfiguration.
+ * @param {string} sceneId
+ * @param {string} workerBase
+ */
+async function loadSceneConfig(sceneId, workerBase) {
+  const sceneConfigUrl = `${workerBase}/scenes/${sceneId}/scene.json`;
+  const res = await fetchWithTimeout(sceneConfigUrl, { timeoutMs: 15000 });
+  if (!res.ok) {
+    throw new Error(`Scene-Konfiguration konnte nicht geladen werden (${res.status})`);
+  }
+  return res.json();
+}
 
-    /* Poster / Einstieg */
-    #poster {
-      position: fixed; inset: 0;
-      display: flex; align-items: center; justify-content: center;
-      background: #05070c; z-index: 20; color: #fff;
-      text-align: center; padding: 24px;
-    }
-    #poster-inner {
-      max-width: 420px; width: 100%; padding: 24px 20px; border-radius: 24px;
-      background: radial-gradient(circle at top,#243b74,#05070c);
-      box-shadow: 0 18px 40px rgba(0,0,0,0.6);
-      border: 1px solid rgba(255,255,255,0.08);
-    }
-    #posterTitle { font-size: 22px; margin: 0 0 8px; }
-    #posterText { margin: 0 0 16px; font-size: 14px; opacity: 0.9; }
-    #startAr {
-      appearance: none; border: none; border-radius: 999px;
-      padding: 10px 22px; font-size: 15px; font-weight: 500;
-      background: linear-gradient(135deg,#5ddcff,#3c67e3); color:#fff;
-      cursor: pointer;
-      box-shadow: 0 6px 16px rgba(0,0,0,0.5);
-      transition: transform .25s;
-    }
-    #startAr:active { transform: scale(.94); }
-    #startAr[disabled]{ opacity:.55; cursor: wait; }
+/**
+ * Erzeugt einen slug aus einem Label für den Slot-Namen.
+ * @param {string} label
+ */
+function slugify(label) {
+  return (label || 'hotspot')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g,'-')
+    .replace(/^-+|-+$/g,'');
+}
 
-    #loading-status {
-      position: fixed;
-      inset: 0;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 16px; color: #fff;
-      background: #05070c;
-      z-index: 10;
-    }
+/**
+ * Erstellt Hotspots aus clickableNodes (inkl. Position).
+ * @param {HTMLElement} mvEl
+ * @param {Array<{label:string,url:string,position?:{x:number,y:number,z:number}}>} clickableNodes
+ */
+function createHotspotsFromClickableNodes(mvEl, clickableNodes) {
+  if (!Array.isArray(clickableNodes) || clickableNodes.length === 0) return;
 
-    #err {
-      position: fixed; left: 12px; top: 12px; z-index: 40;
-      background: #b00020; color:#fff; padding:8px 10px; border-radius:8px;
-      display:none; font:12px/1.35 monospace;
-      max-width:min(92vw,680px); white-space:pre-wrap;
-    }
+  clickableNodes.forEach((node, idx) => {
+    if (!node.url) return;
 
-    #ar-container {
-      width: 100%; height: 100%;
-      position: relative;
-      background: #000;
+    if (!node.position ||
+        typeof node.position.x !== 'number' ||
+        typeof node.position.y !== 'number' ||
+        typeof node.position.z !== 'number') {
+      console.warn('Hotspot ohne gültige Position übersprungen:', node);
+      return;
     }
 
-    model-viewer {
-      position: fixed;
-      inset: 0;
-      width: 100vw;
-      height: 100svh;
-      display: block;
-      background: #000;
-      transform: translateY(var(--model-vertical-offset));
-    }
+    const slotName = `hotspot-${slugify(node.label || ('link'+idx))}`;
 
-    /* Haupt-UI Overlay */
-    #ar-ui {
-      position: fixed; inset:0; z-index:30;
-      display:none; pointer-events:none;
-      font-family: inherit;
-    }
-    .bottom-bar {
-      position:absolute; left:0; right:0;
-      bottom:max(env(safe-area-inset-bottom),16px);
-      display:flex; align-items:center; justify-content:space-between;
-      gap:22px; pointer-events:auto; padding:0 18px;
-    }
+    const hotspot = document.createElement('button');
+    hotspot.setAttribute('slot', slotName);
+    hotspot.className = 'Hotspot';
+    hotspot.textContent = node.label || `Link ${idx+1}`;
 
-    /* Galerie & Mute Basis-Buttons */
-    #btn-gallery, #btn-mute {
-      appearance:none; border:none; cursor:pointer;
-      display:flex; align-items:center; justify-content:center;
-      color:#fff;
-      background: rgba(30,30,30,0.6);
-      border:1px solid rgba(255,255,255,0.25);
-      box-shadow:0 4px 12px rgba(0,0,0,0.4);
-      backdrop-filter: blur(4px);
-      width:44px; height:44px; border-radius:12px; font-size:18px;
-      transition:background .25s;
-    }
-    #btn-gallery:active, #btn-mute:active { background:rgba(255,255,255,0.15); }
+    hotspot.setAttribute(
+      'data-position',
+      `${node.position.x} ${node.position.y} ${node.position.z}`
+    );
+    hotspot.setAttribute('data-normal', '0 1 0');
 
-    /* Zentraler Capture Button (Foto/Video) */
-    #btn-capture {
-      appearance:none; border:none; cursor:pointer;
-      width:84px; height:84px; border-radius:50%;
-      background:transparent; border:none; box-shadow:none;
-      position:relative; padding:0; margin:0 auto;
-      display:flex; align-items:center; justify-content:center;
-    }
-    #btn-capture .outer-ring {
-      position:absolute; inset:0;
-      border-radius:50%;
-      background: rgba(255,255,255,0.2);
-      border: 2px solid rgba(255,255,255,0.6);
-      display:flex; align-items:center; justify-content:center;
-      transition: transform .25s, background .25s, border-color .25s;
-    }
-    #btn-capture .inner-dot {
-      width:56px; height:56px;
-      background:#fff; border-radius:50%;
-      transition: transform .2s, background .2s, border-radius .2s;
-    }
-    #btn-capture.snap .inner-dot { animation:snap-blink 180ms ease-out; }
-    @keyframes snap-blink {0%{transform:scale(1)}50%{transform:scale(.9)}100%{transform:scale(1)}}
+    hotspot.addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.open(node.url, '_blank');
+    });
 
-    #btn-capture.recording .outer-ring {
-      background: rgba(255,59,48,0.25);
-      border-color: rgba(255,59,48,0.95);
-      animation: rec-pulse 1.05s ease-in-out infinite;
-    }
-    #btn-capture.recording .inner-dot {
-      background:#ff3b30;
-      width:34px; height:34px;
-      border-radius:8px;
-      transform: scale(1.0);
-    }
-    @keyframes rec-pulse {0%{transform:scale(1)}50%{transform:scale(1.06)}100%{transform:scale(1)}}
+    mvEl.appendChild(hotspot);
+  });
+}
 
-    /* Aufnahme-Zeitinfo */
-    #rec-info {
-      position:absolute;
-      bottom: calc(max(env(safe-area-inset-bottom),16px) + 110px);
-      left:50%; transform:translateX(-50%);
-      background:#ff3b30; color:#fff;
-      padding:4px 8px; border-radius:4px; font-size:14px;
-      display:none; align-items:center; gap:6px;
-    }
-    #rec-info::before { content:"●"; font-size:10px; animation:rec-pulse 1s infinite; }
+/* -------- Globale Zustände -------- */
+let cfg = null;
+let arAudio = null;
+let isAudioMuted = false;
+let arSessionActive = false;
 
-    /* Galerie Panel */
-    #gallery-panel {
-      position:fixed; inset:0; z-index:50;
-      background:rgba(5,7,12,0.92);
-      backdrop-filter:blur(12px);
-      display:none; flex-direction:column;
-      padding:18px 22px 40px;
-    }
-    #gallery-header {
-      display:flex; align-items:center; justify-content:space-between;
-      margin-bottom:12px;
-    }
-    #gallery-header h2 {
-      margin:0; font-size:18px; font-weight:600; color:#fff;
-    }
-    #btn-gallery-close {
-      appearance:none; border:none; cursor:pointer;
-      background:#24303a; color:#fff; padding:6px 12px; border-radius:8px;
-      font-size:14px; border:1px solid rgba(255,255,255,0.15);
-    }
-    #gallery-grid {
-      display:grid;
-      grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
-      gap:12px;
-      overflow:auto;
-      padding:4px;
-    }
-    .thumb {
-      position:relative;
-      background:#111; border-radius:8px; overflow:hidden;
-      border:1px solid rgba(255,255,255,0.15);
-      display:flex; align-items:center; justify-content:center;
-    }
-    .thumb img, .thumb video {
-      width:100%; height:100%; object-fit:cover;
-      display:block;
-    }
-    .thumb-label {
-      position:absolute; left:4px; bottom:4px;
-      background:rgba(0,0,0,0.55); color:#fff;
-      font-size:10px; padding:2px 4px; border-radius:4px;
-    }
-    .thumb video { background:#000; }
+/* -------- DOM Referenzen -------- */
+const loadingStatus   = document.getElementById('loading-status');
+const container       = document.getElementById('ar-container');
+const poster          = document.getElementById('poster');
+const posterTitle     = document.getElementById('posterTitle');
+const posterSubtitle  = document.getElementById('posterSubtitle');
+const posterText      = document.getElementById('posterText');
+const posterMedia     = document.getElementById('poster-media');
+const posterImageEl   = document.getElementById('posterImageEl');
+const startArButton   = document.getElementById('startAr');
+const mvEl            = document.getElementById('ar-scene-element');
+const arUI            = document.getElementById('ar-ui');
+const btnMute         = document.getElementById('btn-mute');
+const errEl           = document.getElementById('err');
 
-    /* Hotspots (unverändert) */
-    .Hotspot {
-      background: rgba(30,30,30,0.75);
-      color: #fff;
-      border: 1px solid rgba(255,255,255,0.35);
-      padding: 6px 10px;
-      border-radius: 6px;
-      font-size: 12px;
-      cursor: pointer;
+/* -------- Hilfsfunktionen UI/Logik -------- */
+function displayError(message) {
+  console.error('VIEWER ERROR:', message);
+  if (errEl) {
+    errEl.textContent = 'FEHLER: ' + message;
+    errEl.style.display = 'block';
+  }
+  if (loadingStatus) loadingStatus.textContent = 'Fehler: ' + message;
+}
+
+function updateMuteButtonUI() {
+  if (!btnMute) return;
+  btnMute.textContent = isAudioMuted ? '🔇' : '🔊';
+}
+
+function initAudio(audioCfg, sceneId, workerBase) {
+  if (!btnMute) return;
+  if (!audioCfg || !audioCfg.url) {
+    btnMute.style.display = 'none';
+    return;
+  }
+  const audioUrl = `${workerBase}/scenes/${sceneId}/${audioCfg.url}`;
+  arAudio = new Audio(audioUrl);
+  arAudio.loop = !!audioCfg.loop;
+  arAudio.volume = audioCfg.volume !== undefined ? audioCfg.volume : 0.8;
+
+  btnMute.style.display = 'flex';
+  updateMuteButtonUI();
+  btnMute.onclick = () => {
+    isAudioMuted = !isAudioMuted;
+    arAudio.muted = isAudioMuted;
+    updateMuteButtonUI();
+  };
+}
+
+function toggleAudio(play) {
+  if (!arAudio) return;
+  if (play) {
+    if (!isAudioMuted) {
+      const delay = cfg?.audio?.delaySeconds || 0;
+      if (delay > 0) {
+        setTimeout(
+          () => arAudio.play().catch(e => console.warn('Audio play failed:', e)),
+          delay * 1000
+        );
+      } else {
+        arAudio.play().catch(e => console.warn('Audio play failed:', e));
+      }
     }
-    .Hotspot.in-ar {
-      background: rgba(0,140,255,0.85);
-      border-color: rgba(255,255,255,0.6);
+  } else {
+    arAudio.pause();
+    arAudio.currentTime = 0;
+  }
+}
+
+function applyYOffset(yOffset) {
+  if (typeof yOffset !== 'number') return;
+  const px = (-yOffset * 100).toFixed(0) + 'px';
+  document.documentElement.style.setProperty('--model-vertical-offset', px);
+  console.log(`Y-Offset angewandt (nur Nicht-AR 3D-Ansicht): ${px}`);
+}
+
+/* ---------- Szene laden & konfigurieren ---------- */
+async function initializeViewer(sceneId, workerBase) {
+  if (!mvEl || mvEl.tagName !== 'MODEL-VIEWER') {
+    displayError('model-viewer Element fehlt oder falsch.');
+    return;
+  }
+
+  let config;
+  try {
+    config = await loadSceneConfig(sceneId, workerBase);
+  } catch (e) {
+    displayError(e.message);
+    return;
+  }
+  cfg = config;
+
+  if (!cfg.model || !cfg.model.url) {
+    displayError('Kein 3D-Modell in Konfiguration.');
+    return;
+  }
+
+  const modelUrl = `${workerBase}/scenes/${sceneId}/${cfg.model.url}`;
+  mvEl.setAttribute('src', modelUrl);
+  mvEl.setAttribute('alt', cfg.meta?.title || '3D Modell');
+  mvEl.setAttribute('shadow-intensity', '1');
+  mvEl.setAttribute('camera-controls', '');
+  mvEl.setAttribute('auto-rotate', '');
+  mvEl.setAttribute('ar', '');
+  mvEl.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
+  mvEl.setAttribute('interaction-prompt', 'none');
+  mvEl.setAttribute('auto-rotate-delay', '1000');
+  mvEl.setAttribute('disable-tap', '');
+
+  if (cfg.environmentImage) {
+    mvEl.setAttribute('environment-image', cfg.environmentImage);
+  }
+  if (typeof cfg.exposure === 'number') {
+    mvEl.setAttribute('exposure', String(cfg.exposure));
+  }
+
+  // Hotspots aus clickableNodes inklusive Positionen
+  createHotspotsFromClickableNodes(mvEl, cfg.clickableNodes);
+
+  // Audio init
+  initAudio(cfg.audio, sceneId, workerBase);
+
+  // Y-Offset nur für 3D-Modus
+  if (typeof cfg.model.yOffset === 'number') {
+    applyYOffset(cfg.model.yOffset);
+  }
+
+  // Poster-Texte & Bild aus meta
+  const meta = cfg.meta || {};
+  const title    = meta.title    || 'AR Erlebnis';
+  const subtitle = meta.subtitle || '';
+  const body     = meta.body     || 'Tippe auf START AR, um das Modell in deiner Umgebung zu sehen.';
+
+  if (posterTitle)    posterTitle.textContent = title;
+  if (posterSubtitle) {
+    if (subtitle.trim()) {
+      posterSubtitle.textContent = subtitle;
+      posterSubtitle.classList.remove('hidden');
+    } else {
+      posterSubtitle.textContent = '';
+      posterSubtitle.classList.add('hidden');
     }
-  </style>
-</head>
-<body>
+  }
+  if (posterText)     posterText.textContent = body;
 
-  <div id="poster">
-    <div id="poster-inner">
-      <h1 id="posterTitle">3D / AR Erlebnis</h1>
-      <p id="posterText">Tippe auf START AR, um das Modell in deiner Umgebung zu sehen.</p>
-      <button id="startAr" type="button">START AR</button>
-    </div>
-  </div>
+  if (meta.posterImage && posterImageEl && posterMedia) {
+    const posterUrl = `${workerBase}/scenes/${sceneId}/${meta.posterImage}`;
+    posterImageEl.src = posterUrl;
+    posterMedia.classList.remove('hidden');
+  } else if (posterMedia) {
+    posterMedia.classList.add('hidden');
+  }
 
-  <div id="loading-status">Lade Szene…</div>
-  <div id="err"></div>
+  // Optional: Dokumenttitel anpassen
+  try {
+    if (title) document.title = `ARea Viewer – ${title}`;
+  } catch (_) {}
 
-  <div id="ar-container" style="display:none;">
-    <model-viewer id="ar-scene-element"
-      loading="eager"
-      disable-tap
-      camera-controls>
-    </model-viewer>
-  </div>
+  // Anzeige wechseln
+  if (loadingStatus) loadingStatus.style.display = 'none';
+  if (container) container.style.display = 'block';
 
-  <div id="ar-ui">
-    <div class="bottom-bar">
-      <button id="btn-gallery" aria-label="Galerie"><i class="fa-solid fa-images"></i></button>
+  mvEl.addEventListener('load', () => {
+    console.log('Modell geladen.');
+    mvEl.removeAttribute('auto-rotate');
+  });
 
-      <button id="btn-capture" aria-label="Auslöser">
-        <span class="outer-ring"><span class="inner-dot"></span></span>
-      </button>
+  mvEl.addEventListener('error', (e) => {
+    console.error('model-viewer Fehler:', e);
+    displayError('Fehler beim Laden des Modells.');
+    if (container) container.style.display = 'none';
+  });
 
-      <button id="btn-mute" aria-label="Audio stumm/aktivieren">🔊</button>
-    </div>
-    <div id="rec-info">00:00</div>
-  </div>
+  // AR Status Handling
+  mvEl.addEventListener('ar-status', async (event) => {
+    const status = event.detail.status;
+    if (status === 'session-started') {
+      arSessionActive = true;
+      if (poster) poster.style.display = 'none';
+      if (arUI)   arUI.style.display = 'block';
+      toggleAudio(true);
+      mvEl.querySelectorAll('.Hotspot').forEach(h => h.classList.add('in-ar'));
+    } else if (status === 'session-ended') {
+      arSessionActive = false;
+      if (arUI)   arUI.style.display = 'none';
+      toggleAudio(false);
+      if (poster) poster.style.display = 'flex';
+      mvEl.querySelectorAll('.Hotspot').forEach(h => h.classList.remove('in-ar'));
+      // Aufnahme sauber beenden (Fallback, falls noch aktiv)
+      await stopRecordingOnARSessionEnd();
+    } else if (status === 'failed') {
+      arSessionActive = false;
+      if (startArButton) startArButton.disabled = false;
+      displayError('AR konnte nicht gestartet werden.');
+    }
+  });
 
-  <!-- Galerie Panel -->
-  <div id="gallery-panel">
-    <div id="gallery-header">
-      <h2>Galerie</h2>
-      <button id="btn-gallery-close" type="button">Schließen</button>
-    </div>
-    <div id="gallery-grid"></div>
-  </div>
+  // Fallback-Klick auf Modell (ohne Hotspots)
+  mvEl.addEventListener('click', () => {
+    if (!cfg.clickableNodes || cfg.clickableNodes.length === 0) return;
+    const anyHotspot = mvEl.querySelector('.Hotspot');
+    if (anyHotspot) return;
+    const node = cfg.clickableNodes[0];
+    if (node?.url) {
+      if (arSessionActive) {
+        mvEl.dismissAR?.();
+        setTimeout(() => window.open(node.url, '_blank'), 600);
+      } else {
+        window.open(node.url, '_blank');
+      }
+    }
+  });
+}
 
-  <!-- Entry Point -->
-  <script type="module" src="./js/index.js"></script>
-</body>
-</html>
+/* ---------- Bootstrap ---------- */
+document.addEventListener('DOMContentLoaded', () => {
+  const params = new URLSearchParams(window.location.search);
+  const sceneId   = params.get('scene');
+  const workerBase = params.get('base');
+
+  if (!sceneId || !workerBase) {
+    displayError('Fehlende URL-Parameter (scene/base).');
+    return;
+  }
+
+  // START AR Button
+  if (startArButton) {
+    startArButton.onclick = () => {
+      startArButton.disabled = true;
+      mvEl.activateAR();
+      // Fallback: Falls AR nicht startet
+      setTimeout(() => {
+        if (!arSessionActive) startArButton.disabled = false;
+      }, 5000);
+    };
+  }
+
+  // Aufnahme / Galerie-UI initialisieren
+  initRecording();
+
+  // Initial Start
+  initializeViewer(sceneId, workerBase);
+});
