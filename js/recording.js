@@ -39,7 +39,7 @@ export function initRecording(state) {
 
   window.addEventListener('beforeunload', () => {
     if (isRecordingReal || simulatedRecordingId) {
-      try { stopAllRecording(recInfo, btnRecord); } catch(_) {}
+      try { stopAllRecording(recInfo, btnRecord); } catch (_) {}
     }
   });
 }
@@ -70,7 +70,6 @@ function takeScreenshot(mvEl) {
     .catch(e => console.error('Screenshot fehlgeschlagen:', e));
 }
 
-
 /* ---------- Feature Detection ---------- */
 function canRecordReal(mvEl) {
   return !!window.MediaRecorder && !!mvEl?.shadowRoot?.querySelector('canvas');
@@ -99,8 +98,8 @@ function formatTime(seconds) {
     const s = String(seconds % 60).padStart(2, '0');
     return `${h}:${m}:${s}`;
   } else {
-    const m = String(Math.floor(seconds / 60)).padStart(2,'0');
-    const s = String(seconds % 60).padStart(2,'0');
+    const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+    const s = String(seconds % 60).padStart(2, '0');
     return `${m}:${s}`;
   }
 }
@@ -125,23 +124,31 @@ function startRealRecording(mvEl, recInfo, btnRecord) {
       const dest = audioCtxRef.createMediaStreamDestination();
       source.connect(dest);
       source.connect(audioCtxRef.destination);
-      finalStream = new MediaStream([...stream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
+      finalStream = new MediaStream([
+        ...stream.getVideoTracks(),
+        ...dest.stream.getAudioTracks()
+      ]);
     } catch (e) {
       console.warn('Audiomixing fehlgeschlagen:', e);
     }
   }
 
   const mimeTypeCandidates = [
-    'video/webm;codecs=vp9,opus', // bevorzugt: bessere Qualität
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2', // mp4 bevorzugt, wenn Browser es kann
+    'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8',
     'video/webm'
   ];
+
   let chosen = '';
   for (const c of mimeTypeCandidates) {
-    if (MediaRecorder.isTypeSupported(c)) { chosen = c; break; }
+    if (MediaRecorder.isTypeSupported(c)) {
+      chosen = c;
+      break;
+    }
   }
   if (!chosen) {
-    console.warn('Kein unterstützter WebM Codec gefunden → Fallback Simulation.');
+    console.warn('Kein unterstützter Video-Codec gefunden → Fallback Simulation.');
     startSimulatedRecording(recInfo, btnRecord);
     return;
   }
@@ -172,6 +179,7 @@ function startRealRecording(mvEl, recInfo, btnRecord) {
   mediaRecorder.ondataavailable = (e) => {
     if (e.data.size > 0) recordedChunks.push(e.data);
   };
+
   mediaRecorder.onstop = () => {
     if (realTimerId) {
       clearInterval(realTimerId);
@@ -181,12 +189,14 @@ function startRealRecording(mvEl, recInfo, btnRecord) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'ARea_Recording.webm';
+
+    const fileExt = chosen.startsWith('video/mp4') ? 'mp4' : 'webm';
+    a.download = `ARea_Recording.${fileExt}`;
+
     a.click();
     URL.revokeObjectURL(url);
     isRecordingReal = false;
-    // AudioContext schließen zur Freigabe von Ressourcen
-    try { audioCtxRef?.close(); } catch(_) {}
+    try { audioCtxRef?.close(); } catch (_) {}
     audioCtxRef = null;
   };
 
@@ -208,7 +218,7 @@ function stopAllRecording(recInfo, btnRecord) {
   recInfo.style.display = 'none';
   btnRecord.classList.remove('recording');
   isRecordingReal = false;
-  try { audioCtxRef?.close(); } catch(_) {}
+  try { audioCtxRef?.close(); } catch (_) {}
   audioCtxRef = null;
 }
 
