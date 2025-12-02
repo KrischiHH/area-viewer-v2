@@ -50,19 +50,18 @@ function takeScreenshot(mvEl) {
     console.warn('toBlob() nicht verfügbar.');
     return;
   }
-  // Snap-Animation am Auslöser-Button
   const shutterBtn = document.getElementById('btn-shutter');
   if (shutterBtn) {
     shutterBtn.classList.add('snap');
     setTimeout(() => shutterBtn.classList.remove('snap'), 200);
   }
 
-  mvEl.toBlob({ mimeType: 'image/png' })
+  mvEl.toBlob({ mimeType: 'image/jpeg', quality: 0.92 })
     .then(blob => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'ARea_Screenshot.png';
+      a.download = 'ARea_Screenshot.jpg';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -70,6 +69,7 @@ function takeScreenshot(mvEl) {
     })
     .catch(e => console.error('Screenshot fehlgeschlagen:', e));
 }
+
 
 /* ---------- Feature Detection ---------- */
 function canRecordReal(mvEl) {
