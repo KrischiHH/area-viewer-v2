@@ -7,6 +7,10 @@
 
   <!-- model-viewer Library -->
   <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+  <!-- Font Awesome für Galerie-Icon -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <!-- FFmpeg.js für WebM -> MP4 -->
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/ffmpeg.min.js"></script>
 
   <style>
     :root {
@@ -22,6 +26,7 @@
       touch-action: manipulation;
     }
 
+    /* Poster / Einstieg */
     #poster {
       position: fixed; inset: 0;
       display: flex; align-items: center; justify-content: center;
@@ -79,6 +84,7 @@
       transform: translateY(var(--model-vertical-offset));
     }
 
+    /* Haupt-UI Overlay */
     #ar-ui {
       position: fixed; inset:0; z-index:30;
       display:none; pointer-events:none;
@@ -87,55 +93,117 @@
     .bottom-bar {
       position:absolute; left:0; right:0;
       bottom:max(env(safe-area-inset-bottom),16px);
-      display:flex; align-items:center; justify-content:center;
+      display:flex; align-items:center; justify-content:space-between;
       gap:22px; pointer-events:auto; padding:0 18px;
     }
 
-    #btn-mute, #btn-shutter, #btn-record {
+    /* Galerie & Mute Basis-Buttons */
+    #btn-gallery, #btn-mute {
       appearance:none; border:none; cursor:pointer;
-      border-radius:50%;
       display:flex; align-items:center; justify-content:center;
-      backdrop-filter:blur(4px);
+      color:#fff;
+      background: rgba(30,30,30,0.6);
       border:1px solid rgba(255,255,255,0.25);
       box-shadow:0 4px 12px rgba(0,0,0,0.4);
-      color:#fff;
+      backdrop-filter: blur(4px);
+      width:44px; height:44px; border-radius:12px; font-size:18px;
+      transition:background .25s;
     }
+    #btn-gallery:active, #btn-mute:active { background:rgba(255,255,255,0.15); }
 
-    #btn-mute {
-      width:44px; height:44px; background:rgba(30,30,30,0.6); font-size:18px;
-      display:none;
+    /* Zentraler Capture Button (Foto/Video) */
+    #btn-capture {
+      appearance:none; border:none; cursor:pointer;
+      width:84px; height:84px; border-radius:50%;
+      background:transparent; border:none; box-shadow:none;
+      position:relative; padding:0; margin:0 auto;
+      display:flex; align-items:center; justify-content:center;
     }
-
-    #btn-shutter {
-      width:70px; height:70px;
-      background:radial-gradient(circle,#fff 60%,#dfe6f2 100%);
-      position:relative;
-      transition:transform .25s;
+    #btn-capture .outer-ring {
+      position:absolute; inset:0;
+      border-radius:50%;
+      background: rgba(255,255,255,0.2);
+      border: 2px solid rgba(255,255,255,0.6);
+      display:flex; align-items:center; justify-content:center;
+      transition: transform .25s, background .25s, border-color .25s;
     }
-    #btn-shutter:active { transform:scale(.92); }
-    #btn-shutter.snap { animation:snap-blink 180ms ease-out; }
+    #btn-capture .inner-dot {
+      width:56px; height:56px;
+      background:#fff; border-radius:50%;
+      transition: transform .2s, background .2s, border-radius .2s;
+    }
+    #btn-capture.snap .inner-dot { animation:snap-blink 180ms ease-out; }
     @keyframes snap-blink {0%{transform:scale(1)}50%{transform:scale(.9)}100%{transform:scale(1)}}
 
-    #btn-record {
-      width:54px; height:54px;
-      background:radial-gradient(circle,#ff3b30 65%,#c72018 100%);
-      font-size:20px;
+    #btn-capture.recording .outer-ring {
+      background: rgba(255,59,48,0.25);
+      border-color: rgba(255,59,48,0.95);
+      animation: rec-pulse 1.05s ease-in-out infinite;
     }
-    #btn-record.recording {
-      animation:pulse 1.05s ease-in-out infinite;
+    #btn-capture.recording .inner-dot {
+      background:#ff3b30;
+      width:34px; height:34px;
+      border-radius:8px;
+      transform: scale(1.0);
     }
-    @keyframes pulse {0%{transform:scale(1)}50%{transform:scale(1.06)}100%{transform:scale(1)}}
+    @keyframes rec-pulse {0%{transform:scale(1)}50%{transform:scale(1.06)}100%{transform:scale(1)}}
 
+    /* Aufnahme-Zeitinfo */
     #rec-info {
       position:absolute;
-      bottom: calc(max(env(safe-area-inset-bottom),16px) + 96px);
+      bottom: calc(max(env(safe-area-inset-bottom),16px) + 110px);
       left:50%; transform:translateX(-50%);
       background:#ff3b30; color:#fff;
       padding:4px 8px; border-radius:4px; font-size:14px;
-      display:none; align-items:center; gap:4px;
+      display:none; align-items:center; gap:6px;
     }
-    #rec-info::before { content:"●"; font-size:10px; animation:pulse 1s infinite; }
+    #rec-info::before { content:"●"; font-size:10px; animation:rec-pulse 1s infinite; }
 
+    /* Galerie Panel */
+    #gallery-panel {
+      position:fixed; inset:0; z-index:50;
+      background:rgba(5,7,12,0.92);
+      backdrop-filter:blur(12px);
+      display:none; flex-direction:column;
+      padding:18px 22px 40px;
+    }
+    #gallery-header {
+      display:flex; align-items:center; justify-content:space-between;
+      margin-bottom:12px;
+    }
+    #gallery-header h2 {
+      margin:0; font-size:18px; font-weight:600; color:#fff;
+    }
+    #btn-gallery-close {
+      appearance:none; border:none; cursor:pointer;
+      background:#24303a; color:#fff; padding:6px 12px; border-radius:8px;
+      font-size:14px; border:1px solid rgba(255,255,255,0.15);
+    }
+    #gallery-grid {
+      display:grid;
+      grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+      gap:12px;
+      overflow:auto;
+      padding:4px;
+    }
+    .thumb {
+      position:relative;
+      background:#111; border-radius:8px; overflow:hidden;
+      border:1px solid rgba(255,255,255,0.15);
+      display:flex; align-items:center; justify-content:center;
+    }
+    .thumb img, .thumb video {
+      width:100%; height:100%; object-fit:cover;
+      display:block;
+    }
+    .thumb-label {
+      position:absolute; left:4px; bottom:4px;
+      background:rgba(0,0,0,0.55); color:#fff;
+      font-size:10px; padding:2px 4px; border-radius:4px;
+    }
+    .thumb video { background:#000; }
+
+    /* Hotspots (unverändert) */
     .Hotspot {
       background: rgba(30,30,30,0.75);
       color: #fff;
@@ -174,12 +242,24 @@
 
   <div id="ar-ui">
     <div class="bottom-bar">
+      <button id="btn-gallery" aria-label="Galerie"><i class="fa-solid fa-images"></i></button>
+
+      <button id="btn-capture" aria-label="Auslöser">
+        <span class="outer-ring"><span class="inner-dot"></span></span>
+      </button>
+
       <button id="btn-mute" aria-label="Audio stumm/aktivieren">🔊</button>
-      <button id="btn-shutter" aria-label="Screenshot">📷</button>
-      <button id="btn-record" aria-label="Aufnahme starten/stoppen">●</button>
     </div>
-    <!-- rec-info außerhalb der bottom-bar positionieren -->
     <div id="rec-info">00:00</div>
+  </div>
+
+  <!-- Galerie Panel -->
+  <div id="gallery-panel">
+    <div id="gallery-header">
+      <h2>Galerie</h2>
+      <button id="btn-gallery-close" type="button">Schließen</button>
+    </div>
+    <div id="gallery-grid"></div>
   </div>
 
   <!-- Entry Point -->
