@@ -1,6 +1,7 @@
 import { getPersistentAudioElement } from './audio.js';
 
 // Screenshot & echte/Simulierte Aufnahme
+const MAX_RECORD_TIME_SECONDS = 600; // 10 Minuten
 let recTimer = 0;
 let simulatedRecordingId = null;
 let mediaRecorder = null;
@@ -49,6 +50,13 @@ function takeScreenshot(mvEl) {
     console.warn('toBlob() nicht verfügbar.');
     return;
   }
+  // Snap-Animation am Auslöser-Button
+  const shutterBtn = document.getElementById('btn-shutter');
+  if (shutterBtn) {
+    shutterBtn.classList.add('snap');
+    setTimeout(() => shutterBtn.classList.remove('snap'), 200);
+  }
+
   mvEl.toBlob({ mimeType: 'image/png' })
     .then(blob => {
       const url = URL.createObjectURL(blob);
@@ -78,16 +86,23 @@ function startSimulatedRecording(recInfo, btnRecord) {
   simulatedRecordingId = setInterval(() => {
     recTimer++;
     recInfo.textContent = formatTime(recTimer);
-    if (recTimer >= 60) {
+    if (recTimer >= MAX_RECORD_TIME_SECONDS) {
       stopAllRecording(recInfo, btnRecord);
     }
   }, 1000);
 }
 
 function formatTime(seconds) {
-  const m = String(Math.floor(seconds / 60)).padStart(2,'0');
-  const s = String(seconds % 60).padStart(2,'0');
-  return `${m}:${s}`;
+  if (seconds >= 3600) {
+    const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
+    const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+    const s = String(seconds % 60).padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  } else {
+    const m = String(Math.floor(seconds / 60)).padStart(2,'0');
+    const s = String(seconds % 60).padStart(2,'0');
+    return `${m}:${s}`;
+  }
 }
 
 /* ---------- Echte Aufnahme ---------- */
@@ -117,6 +132,7 @@ function startRealRecording(mvEl, recInfo, btnRecord) {
   }
 
   const mimeTypeCandidates = [
+    'video/webm;codecs=vp9,opus', // bevorzugt: bessere Qualität
     'video/webm;codecs=vp8',
     'video/webm'
   ];
@@ -148,7 +164,7 @@ function startRealRecording(mvEl, recInfo, btnRecord) {
   realTimerId = setInterval(() => {
     recTimer++;
     recInfo.textContent = formatTime(recTimer);
-    if (recTimer >= 60) {
+    if (recTimer >= MAX_RECORD_TIME_SECONDS) {
       stopAllRecording(recInfo, btnRecord);
     }
   }, 1000);
