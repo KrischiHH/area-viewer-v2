@@ -16,7 +16,7 @@ export function hideLoading() {
 export function showPoster(state) {
   const poster       = document.getElementById('poster');
   const titleEl      = document.getElementById('posterTitle');
-  // Subline (neu) – falls du irgendwann ein eigenes Element einbaust
+  // Subline (neu)
   const subtitleEl   = document.getElementById('posterSubtitle');
   // Text: versuche zuerst posterText (neu), sonst posterDesc (alt)
   const textEl       = document.getElementById('posterText') || document.getElementById('posterDesc');
@@ -25,8 +25,8 @@ export function showPoster(state) {
   // Optionaler Wrapper – wenn nicht vorhanden, nutzen wir notfalls parentElement des Bildes
   const mediaWrapper = document.getElementById('poster-media') || (imgEl ? imgEl.parentElement : null);
 
-  const cfg  = state?.cfg || {};
-  const meta = cfg.meta || {};
+  const cfg     = state?.cfg || {};
+  const meta    = cfg.meta || {};
   const welcome = (cfg.ui && cfg.ui.welcome) || {};
 
   // 🔹 Titel: zuerst neues Schema (meta.title), sonst altes (welcome.title / meta.description)
@@ -131,20 +131,50 @@ export function initUI(state) {
 
   // START AR-Button
   if (startBtn && mvEl) {
-    startBtn.addEventListener('click', () => {
+    startBtn.addEventListener('click', async () => {
       startBtn.disabled = true;
+
+      const canActivate = ('canActivateAR' in mvEl) ? mvEl.canActivateAR : undefined;
+      console.log('[ARea Viewer] canActivateAR:', canActivate);
+
       try {
-        mvEl.activateAR();
+        // Wenn canActivateAR explizit false ist → freundlicher Hinweis
+        if (canActivate === false) {
+          const errEl = document.getElementById('err');
+          if (errEl) {
+            errEl.textContent =
+              'AR wird in diesem Browser nicht unterstützt.\n' +
+              'Bitte öffne den Link in Chrome (Android) oder Safari (iOS).';
+            errEl.style.display = 'block';
+          }
+          startBtn.disabled = false;
+          return;
+        }
+
+        if (typeof mvEl.activateAR === 'function') {
+          await mvEl.activateAR();
+        } else if (typeof mvEl.enterAR === 'function') {
+          await mvEl.enterAR();
+        } else {
+          throw new Error('AR-Funktion nicht verfügbar.');
+        }
       } catch (e) {
         console.error('activateAR() fehlgeschlagen:', e);
+        const errEl = document.getElementById('err');
+        if (errEl) {
+          errEl.textContent = 'AR konnte nicht gestartet werden: ' + (e.message || e);
+          errEl.style.display = 'block';
+        }
         startBtn.disabled = false;
+        return;
       }
-      // Fallback, falls AR nicht startet
+
+      // Fallback, falls ar-status nicht feuert (z. B. bei nativen Viewern)
       setTimeout(() => {
         if (!state.arSessionActive) {
           startBtn.disabled = false;
         }
-      }, 5000);
+      }, 6000);
     });
   }
 
