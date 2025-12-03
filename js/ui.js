@@ -12,34 +12,65 @@ export function hideLoading() {
   if (el) el.style.display = 'none';
 }
 
-// Poster ein/aus + Befüllen
+// Poster ein/aus + Befüllen (kompatibel zu ALT & NEU)
 export function showPoster(state) {
-  const poster        = document.getElementById('poster');
-  const titleEl       = document.getElementById('posterTitle');
-  const subtitleEl    = document.getElementById('posterSubtitle');
-  const textEl        = document.getElementById('posterText');
-  const mediaWrapper  = document.getElementById('poster-media');
-  const imgEl         = document.getElementById('posterImageEl');
+  const poster       = document.getElementById('poster');
+  const titleEl      = document.getElementById('posterTitle');
+  // Subline (neu) – falls du irgendwann ein eigenes Element einbaust
+  const subtitleEl   = document.getElementById('posterSubtitle');
+  // Text: versuche zuerst posterText (neu), sonst posterDesc (alt)
+  const textEl       = document.getElementById('posterText') || document.getElementById('posterDesc');
+  // Image: neu = posterImageEl, alt = posterImage
+  const imgEl        = document.getElementById('posterImageEl') || document.getElementById('posterImage');
+  // Optionaler Wrapper – wenn nicht vorhanden, nutzen wir notfalls parentElement des Bildes
+  const mediaWrapper = document.getElementById('poster-media') || (imgEl ? imgEl.parentElement : null);
 
-  const meta = state?.cfg?.meta || {};
+  const cfg  = state?.cfg || {};
+  const meta = cfg.meta || {};
+  const welcome = (cfg.ui && cfg.ui.welcome) || {};
 
-  // Fallback-Texte, falls Editor-Felder leer bleiben
-  const title    = (meta.title && meta.title.trim())    || '3D / AR Erlebnis';
-  const subtitle = (meta.subtitle && meta.subtitle.trim()) || '';
-  const body     = (meta.body && meta.body.trim())
-    || 'Tippe auf START AR, um das Modell in deiner Umgebung zu sehen.';
+  // 🔹 Titel: zuerst neues Schema (meta.title), sonst altes (welcome.title / meta.description)
+  const title =
+    (meta.title && meta.title.trim()) ||
+    (welcome.title && welcome.title.trim()) ||
+    '3D / AR Erlebnis';
 
-  console.log('ARea Viewer – showPoster meta:', {
+  // 🔹 Subline: neues Feld (meta.subtitle) oder altes Eyebrow (welcome.eyebrow)
+  const subtitle =
+    (meta.subtitle && meta.subtitle.trim()) ||
+    (welcome.eyebrow && welcome.eyebrow.trim()) ||
+    '';
+
+  // 🔹 Body-Text: neu = meta.body, alt = meta.description oder welcome.desc
+  const body =
+    (meta.body && meta.body.trim()) ||
+    (meta.description && meta.description.trim()) ||
+    (welcome.desc && welcome.desc.trim()) ||
+    'Tippe auf START AR, um das Modell in deiner Umgebung zu sehen.';
+
+  // 🔹 Posterbild-Dateiname: neu = meta.posterImage, alt = welcome.poster
+  const posterFile =
+    (meta.posterImage && String(meta.posterImage).trim()) ||
+    (welcome.poster && String(welcome.poster).trim()) ||
+    '';
+
+  console.log('ARea Viewer – showPoster()', {
     meta,
-    resolved: { title, subtitle, body, posterImage: meta.posterImage },
+    welcome,
+    resolved: { title, subtitle, body, posterFile },
     sceneId: state?.sceneId,
     workerBase: state?.workerBase
   });
 
-  if (titleEl)   titleEl.textContent = title;
-  if (textEl)    textEl.textContent  = body;
+  if (titleEl) {
+    titleEl.textContent = title;
+  }
 
-  // Subline ein-/ausblenden
+  if (textEl) {
+    textEl.textContent = body;
+  }
+
+  // Subline nur anzeigen, wenn Element existiert
   if (subtitleEl) {
     if (subtitle) {
       subtitleEl.textContent = subtitle;
@@ -50,22 +81,39 @@ export function showPoster(state) {
     }
   }
 
-  // Posterbild aus meta.posterImage
-  if (mediaWrapper && imgEl) {
-    const imgName = (meta.posterImage && String(meta.posterImage).trim()) || '';
-    if (imgName && state?.workerBase && state?.sceneId) {
-      const url = `${state.workerBase}/scenes/${state.sceneId}/${imgName}`;
+  // Posterbild nur, wenn wir ein Dateiname UND sceneId/base haben
+  if (imgEl) {
+    if (posterFile && state?.workerBase && state?.sceneId) {
+      const url = `${state.workerBase}/scenes/${encodeURIComponent(
+        state.sceneId
+      )}/${encodeURIComponent(posterFile)}`;
       console.log('ARea Viewer – Posterbild URL:', url);
       imgEl.src = url;
-      mediaWrapper.classList.remove('hidden');
+
+      // alt-Styling aus altem Viewer: display:block
+      if (imgEl.style) {
+        imgEl.style.display = 'block';
+      }
+
+      if (mediaWrapper) {
+        mediaWrapper.classList.remove('hidden');
+        if (mediaWrapper.style) mediaWrapper.style.display = '';
+      }
     } else {
-      // kein Bild gesetzt → Wrapper ausblenden
-      imgEl.removeAttribute('src');
-      mediaWrapper.classList.add('hidden');
+      // Kein Bild → ausblenden
+      if (imgEl.style) {
+        imgEl.removeAttribute('src');
+        imgEl.style.display = 'none';
+      }
+      if (mediaWrapper) {
+        mediaWrapper.classList.add('hidden');
+      }
     }
   }
 
-  if (poster) poster.style.display = 'flex';
+  if (poster) {
+    poster.style.display = 'flex';
+  }
 }
 
 export function hidePoster() {
@@ -75,11 +123,11 @@ export function hidePoster() {
 
 // UI-Grundverdrahtung: Start-Button, Galerie-Buttons etc.
 export function initUI(state) {
-  const startBtn       = document.getElementById('startAr');
-  const mvEl           = document.getElementById('ar-scene-element');
-  const btnGallery     = document.getElementById('btn-gallery');
+  const startBtn        = document.getElementById('startAr');
+  const mvEl            = document.getElementById('ar-scene-element');
+  const btnGallery      = document.getElementById('btn-gallery');
   const btnGalleryClose = document.getElementById('btn-gallery-close');
-  const galleryPanel   = document.getElementById('gallery-panel');
+  const galleryPanel    = document.getElementById('gallery-panel');
 
   // START AR-Button
   if (startBtn && mvEl) {
