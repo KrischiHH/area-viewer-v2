@@ -1,19 +1,59 @@
+// js/ui.js
+// UI-Hilfsfunktionen für den Viewer, passend zu index.js
+
+// Lade-Overlay ein/aus
 export function showLoading() {
   const el = document.getElementById('loading-status');
   if (el) el.style.display = 'flex';
 }
+
 export function hideLoading() {
   const el = document.getElementById('loading-status');
   if (el) el.style.display = 'none';
 }
 
+// Poster ein/aus
 export function showPoster(state) {
-  const poster = document.getElementById('poster');
+  const poster        = document.getElementById('poster');
+  const titleEl       = document.getElementById('posterTitle');
+  const subtitleEl    = document.getElementById('posterSubtitle');
+  const textEl        = document.getElementById('posterText');
+  const mediaWrapper  = document.getElementById('poster-media');
+  const imgEl         = document.getElementById('posterImageEl');
+
+  const meta = state?.cfg?.meta || {};
+  const title    = meta.title    || 'AR Erlebnis';
+  const subtitle = meta.subtitle || '';
+  const body     = meta.body     || 'Tippe auf START AR, um das Modell in deiner Umgebung zu sehen.';
+
+  if (titleEl)   titleEl.textContent = title;
+  if (textEl)    textEl.textContent  = body;
+
+  // Subline ein-/ausblenden
+  if (subtitleEl) {
+    if (subtitle.trim()) {
+      subtitleEl.textContent = subtitle;
+      subtitleEl.classList.remove('hidden');
+    } else {
+      subtitleEl.textContent = '';
+      subtitleEl.classList.add('hidden');
+    }
+  }
+
+  // Posterbild aus meta.posterImage
+  if (mediaWrapper && imgEl) {
+    const imgName = meta.posterImage;
+    if (imgName && state?.workerBase && state?.sceneId) {
+      const url = `${state.workerBase}/scenes/${state.sceneId}/${imgName}`;
+      imgEl.src = url;
+      mediaWrapper.classList.remove('hidden');
+    } else {
+      imgEl.removeAttribute('src');
+      mediaWrapper.classList.add('hidden');
+    }
+  }
+
   if (poster) poster.style.display = 'flex';
-  const title = document.getElementById('posterTitle');
-  const text = document.getElementById('posterText');
-  if (title) title.textContent = state.cfg?.meta?.title || 'AR Erlebnis';
-  if (text) text.textContent = 'Tippe auf START AR, um das Modell in deiner Umgebung zu sehen.';
 }
 
 export function hidePoster() {
@@ -21,65 +61,68 @@ export function hidePoster() {
   if (poster) poster.style.display = 'none';
 }
 
+// UI-Grundverdrahtung: Start-Button, Galerie-Buttons etc.
 export function initUI(state) {
-  const startBtn = document.getElementById('startAr');
-  const mvEl = document.getElementById('ar-scene-element');
-  const container = document.getElementById('ar-container');
-  if (container) container.style.display = 'block';
+  const startBtn      = document.getElementById('startAr');
+  const mvEl          = document.getElementById('ar-scene-element');
+  const btnGallery    = document.getElementById('btn-gallery');
+  const btnGalleryClose = document.getElementById('btn-gallery-close');
+  const galleryPanel  = document.getElementById('gallery-panel');
 
-  if (startBtn) {
-    startBtn.onclick = async () => {
+  // START AR-Button
+  if (startBtn && mvEl) {
+    startBtn.addEventListener('click', () => {
       startBtn.disabled = true;
-      if (!mvEl || typeof mvEl.activateAR !== 'function') {
-        const errEl = document.getElementById('err');
-        if (errEl) {
-          errEl.textContent = 'AR wird nicht unterstützt (activateAR fehlt).';
-          errEl.style.display = 'block';
-        }
-        startBtn.disabled = false;
-        return;
-      }
       try {
-        await mvEl.activateAR();
-      } catch (err) {
-        console.warn('AR Start fehlgeschlagen:', err);
-        const errEl = document.getElementById('err');
-        if (errEl) {
-          errEl.textContent = 'AR Start fehlgeschlagen: ' + (err?.message || err);
-          errEl.style.display = 'block';
-        }
+        mvEl.activateAR();
+      } catch (e) {
+        console.error('activateAR() fehlgeschlagen:', e);
         startBtn.disabled = false;
       }
-      // Sicherheitsnetz: nach 5s reaktivieren, wenn keine Session aktiv
+      // Fallback, falls AR nicht startet
       setTimeout(() => {
-        if (!state.arSessionActive) startBtn.disabled = false;
+        if (!state.arSessionActive) {
+          startBtn.disabled = false;
+        }
       }, 5000);
-    };
+    });
+  }
+
+  // Galerie öffnen/schließen (Aufnahmen-UI)
+  if (btnGallery && btnGalleryClose && galleryPanel) {
+    btnGallery.addEventListener('click', () => {
+      galleryPanel.style.display = 'flex';
+    });
+    btnGalleryClose.addEventListener('click', () => {
+      galleryPanel.style.display = 'none';
+    });
   }
 }
 
-export function bindARStatus(state, handlers) {
+// AR-Status an index.js-Callbacks durchreichen
+export function bindARStatus(state, { onSessionStart, onSessionEnd, onFailed }) {
   const mvEl = document.getElementById('ar-scene-element');
-  const arUI = document.getElementById('ar-ui');
-  const startBtn = document.getElementById('startAr');
   if (!mvEl) return;
 
-  mvEl.addEventListener('ar-status', (e) => {
-    const status = e.detail.status;
+  mvEl.addEventListener('ar-status', (event) => {
+    const status = event.detail?.status;
+
     if (status === 'session-started') {
+      onSessionStart && onSessionStart();
+      // UI: AR-HUD sichtbar machen
+      const arUI = document.getElementById('ar-ui');
       if (arUI) arUI.style.display = 'block';
-      handlers.onSessionStart?.();
+
+      // Hotspots im AR-Modus hervorheben
       mvEl.querySelectorAll('.Hotspot').forEach(h => h.classList.add('in-ar'));
     } else if (status === 'session-ended') {
+      onSessionEnd && onSessionEnd();
+      const arUI = document.getElementById('ar-ui');
       if (arUI) arUI.style.display = 'none';
-      handlers.onSessionEnd?.();
       mvEl.querySelectorAll('.Hotspot').forEach(h => h.classList.remove('in-ar'));
-      if (startBtn) startBtn.disabled = false;
     } else if (status === 'failed') {
-      if (arUI) arUI.style.display = 'none';
-      handlers.onFailed?.(e.detail.message);
-      mvEl.querySelectorAll('.Hotspot').forEach(h => h.classList.remove('in-ar'));
-      if (startBtn) startBtn.disabled = false;
+      const msg = event.detail?.reason || 'AR konnte nicht gestartet werden.';
+      onFailed && onFailed(msg);
     }
   });
 }
