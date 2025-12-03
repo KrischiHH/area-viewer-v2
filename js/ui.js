@@ -12,7 +12,7 @@ export function hideLoading() {
   if (el) el.style.display = 'none';
 }
 
-// Poster ein/aus
+// Poster ein/aus + Befüllen
 export function showPoster(state) {
   const poster        = document.getElementById('poster');
   const titleEl       = document.getElementById('posterTitle');
@@ -22,16 +22,26 @@ export function showPoster(state) {
   const imgEl         = document.getElementById('posterImageEl');
 
   const meta = state?.cfg?.meta || {};
-  const title    = meta.title    || 'AR Erlebnis';
-  const subtitle = meta.subtitle || '';
-  const body     = meta.body     || 'Tippe auf START AR, um das Modell in deiner Umgebung zu sehen.';
+
+  // Fallback-Texte, falls Editor-Felder leer bleiben
+  const title    = (meta.title && meta.title.trim())    || '3D / AR Erlebnis';
+  const subtitle = (meta.subtitle && meta.subtitle.trim()) || '';
+  const body     = (meta.body && meta.body.trim())
+    || 'Tippe auf START AR, um das Modell in deiner Umgebung zu sehen.';
+
+  console.log('ARea Viewer – showPoster meta:', {
+    meta,
+    resolved: { title, subtitle, body, posterImage: meta.posterImage },
+    sceneId: state?.sceneId,
+    workerBase: state?.workerBase
+  });
 
   if (titleEl)   titleEl.textContent = title;
   if (textEl)    textEl.textContent  = body;
 
   // Subline ein-/ausblenden
   if (subtitleEl) {
-    if (subtitle.trim()) {
+    if (subtitle) {
       subtitleEl.textContent = subtitle;
       subtitleEl.classList.remove('hidden');
     } else {
@@ -42,12 +52,14 @@ export function showPoster(state) {
 
   // Posterbild aus meta.posterImage
   if (mediaWrapper && imgEl) {
-    const imgName = meta.posterImage;
+    const imgName = (meta.posterImage && String(meta.posterImage).trim()) || '';
     if (imgName && state?.workerBase && state?.sceneId) {
       const url = `${state.workerBase}/scenes/${state.sceneId}/${imgName}`;
+      console.log('ARea Viewer – Posterbild URL:', url);
       imgEl.src = url;
       mediaWrapper.classList.remove('hidden');
     } else {
+      // kein Bild gesetzt → Wrapper ausblenden
       imgEl.removeAttribute('src');
       mediaWrapper.classList.add('hidden');
     }
@@ -63,11 +75,11 @@ export function hidePoster() {
 
 // UI-Grundverdrahtung: Start-Button, Galerie-Buttons etc.
 export function initUI(state) {
-  const startBtn      = document.getElementById('startAr');
-  const mvEl          = document.getElementById('ar-scene-element');
-  const btnGallery    = document.getElementById('btn-gallery');
+  const startBtn       = document.getElementById('startAr');
+  const mvEl           = document.getElementById('ar-scene-element');
+  const btnGallery     = document.getElementById('btn-gallery');
   const btnGalleryClose = document.getElementById('btn-gallery-close');
-  const galleryPanel  = document.getElementById('gallery-panel');
+  const galleryPanel   = document.getElementById('gallery-panel');
 
   // START AR-Button
   if (startBtn && mvEl) {
@@ -88,7 +100,7 @@ export function initUI(state) {
     });
   }
 
-  // Galerie öffnen/schließen (Aufnahmen-UI)
+  // Galerie öffnen/schließen (für Recording-Snaps/Videos)
   if (btnGallery && btnGalleryClose && galleryPanel) {
     btnGallery.addEventListener('click', () => {
       galleryPanel.style.display = 'flex';
@@ -109,7 +121,6 @@ export function bindARStatus(state, { onSessionStart, onSessionEnd, onFailed }) 
 
     if (status === 'session-started') {
       onSessionStart && onSessionStart();
-      // UI: AR-HUD sichtbar machen
       const arUI = document.getElementById('ar-ui');
       if (arUI) arUI.style.display = 'block';
 
