@@ -26,20 +26,44 @@ export async function loadConfig(sceneId, workerBase) {
 
 export function configureModel(cfg, sceneId, workerBase) {
   const mvEl = initCore();
+  const container = document.getElementById('ar-container');
+  if (container) {
+    container.style.display = 'block';
+  }
+
   if (!cfg.model || !cfg.model.url) {
     throw new Error('Kein Modell in der Konfiguration.');
   }
+
   const modelUrl = `${workerBase}/scenes/${sceneId}/${cfg.model.url}`;
 
   mvEl.setAttribute('src', modelUrl);
   mvEl.setAttribute('alt', cfg.meta?.title || '3D Modell');
   mvEl.setAttribute('shadow-intensity', '1');
   mvEl.setAttribute('auto-rotate', '');          // wird nach load entfernt
-  mvEl.setAttribute('ar', '');
-  mvEl.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
   mvEl.setAttribute('interaction-prompt', 'none');
   mvEl.setAttribute('auto-rotate-delay', '1000');
   mvEl.setAttribute('disable-tap', '');
+
+  // --- AR-Konfiguration: Native first Strategie ---
+  mvEl.setAttribute('ar', '');
+
+  const ua = navigator.userAgent || '';
+  const isAndroid = /Android/i.test(ua);
+  const isIOS = /\b(iPhone|iPad|iPod)\b/i.test(ua);
+
+  if (isIOS && cfg.model?.usdzUrl) {
+    const usdzUrl = `${workerBase}/scenes/${sceneId}/${cfg.model.usdzUrl}`;
+    mvEl.setAttribute('ios-src', usdzUrl);
+    // Quick Look bevorzugen, WebXR als Fallback
+    mvEl.setAttribute('ar-modes', 'quick-look webxr');
+  } else if (isAndroid) {
+    // Scene Viewer (Native) bevorzugen, WebXR als Bonus
+    mvEl.setAttribute('ar-modes', 'scene-viewer webxr');
+  } else {
+    // Desktop & sonstige → nur WebXR versuchen
+    mvEl.setAttribute('ar-modes', 'webxr');
+  }
 
   // NEU: Animation automatisch starten
   mvEl.setAttribute('autoplay', '');
