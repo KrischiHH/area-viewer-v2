@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>AR Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="styles.css">
+  <!-- A-Frame & AR.js -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ar.js@3.4.7/aframe/build/aframe-ar-nft.min.js"></script>
+  <!-- Main Script -->
+  <script defer src="main.js"></script>
+</head>
+<body>
+  <div id="ui">
+    <header>
+      <span id="title">AR Viewer</span>
+      <select id="lang-switch">
+        <option value="de">Deutsch</option>
+        <option value="en">English</option>
+      </select>
+    </header>
+
+    <div id="toolbar">
+      <button id="photo-btn">📸 <span data-i18n="take_photo">Foto aufnehmen</span></button>
+      <button id="video-btn">🎬 <span data-i18n="record_video">Video aufnehmen</span></button>
+      <button id="gallery-btn">🖼️ <span data-i18n="gallery">Galerie</span></button>
+    </div>
+    <div id="gallery-modal" class="hidden">
+      <div id="gallery-content"></div>
+      <button id="close-gallery" data-i18n="close">Schließen</button>
+    </div>
+  </div>
+  <!-- AR Scene -->
+  <a-scene
+    embedded
+    arjs="sourceType: webcam; debugUIEnabled: false;"
+    vr-mode-ui="enabled: false"
+    renderer="gammaOutput: true;"
+    id="ar-scene">
+
+    <!-- Modell wird dynamisch per JS hinzugefügt -->
+    <a-entity id="model-root"></a-entity>
+
+    <!-- Kamera & Licht -->
+    <a-entity camera look-controls></a-entity>
+    <a-light type="ambient" intensity="0.8"></a-light>
+    <a-light type="directional" position="2 4 1" intensity="0.6"></a-light>
+  </a-scene>
+</body>
+</html>
